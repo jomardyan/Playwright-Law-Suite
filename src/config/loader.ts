@@ -31,6 +31,21 @@ function deepMerge<T>(base: T, override: Partial<T>): T {
 }
 
 /**
+ * Rewrites relative `customRulesPaths` entries so they resolve against the
+ * file that declared them. Without this a relative path reaches `import()`
+ * unchanged and Node resolves it against the PackLoader module inside
+ * `dist/`, which is never what the config author meant. Bare specifiers
+ * (a package name such as `@acme/universcan-pack`) are left alone so a pack
+ * can still be installed from a registry.
+ */
+function resolveCustomRulesPaths(config: Partial<UniVerscanConfig>, baseDir: string): void {
+  if (!config.customRulesPaths) return;
+  config.customRulesPaths = config.customRulesPaths.map((path) =>
+    path.startsWith(".") ? resolve(baseDir, path) : path
+  );
+}
+
+/**
  * Loads a UniVerscan config file, resolving `extends` chains so an
  * organization-wide baseline can be layered with jurisdiction/project
  * specifics. `extends` may point to another file path (relative to the
@@ -56,6 +71,7 @@ export function loadConfig(path: string): UniVerscanConfig {
     visited.add(absolute);
 
     const parsed = parseConfigFile(absolute);
+    resolveCustomRulesPaths(parsed, dirname(absolute));
     if (parsed.extends) {
       const parentPath = resolveExtendsPath(absolute, parsed.extends);
       const parent = load(parentPath);
@@ -69,6 +85,16 @@ export function loadConfig(path: string): UniVerscanConfig {
   return deepMerge(DEFAULT_CONFIG, merged);
 }
 
-export function loadConfigFromObject(partial: Partial<UniVerscanConfig>): UniVerscanConfig {
-  return deepMerge(DEFAULT_CONFIG, partial);
+/**
+ * Builds a config from an in-memory object. Relative `customRulesPaths`
+ * resolve against `baseDir`, which defaults to the current working
+ * directory - the only sensible anchor when there is no config file.
+ */
+export function loadConfigFromObject(
+  partial: Partial<UniVerscanConfig>,
+  baseDir: string = process.cwd()
+): UniVerscanConfig {
+  const copy: Partial<UniVerscanConfig> = { ...partial };
+  resolveCustomRulesPaths(copy, baseDir);
+  return deepMerge(DEFAULT_CONFIG, copy);
 }

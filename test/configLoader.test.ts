@@ -58,3 +58,34 @@ describe("loadConfig with extends", () => {
     expect(() => loadConfig(aPath)).toThrow(/Circular config extends chain/);
   });
 });
+
+describe("customRulesPaths resolution", () => {
+  it("resolves a relative custom pack path against the config file that declared it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "universcan-custom-"));
+    const configPath = join(dir, "scan.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ jurisdictions: ["European Union"], customRulesPaths: ["./packs/acme.mjs"] }),
+      "utf-8"
+    );
+
+    const config = loadConfig(configPath);
+
+    // Without this, the bare "./packs/acme.mjs" reaches import() and Node
+    // resolves it against dist/packs/, which no config author intends.
+    expect(config.customRulesPaths).toEqual([join(dir, "packs", "acme.mjs")]);
+  });
+
+  it("leaves a bare package specifier alone so a pack can be installed from a registry", () => {
+    const dir = mkdtempSync(join(tmpdir(), "universcan-custom-"));
+    const configPath = join(dir, "scan.json");
+    writeFileSync(configPath, JSON.stringify({ customRulesPaths: ["@acme/universcan-pack"] }), "utf-8");
+
+    expect(loadConfig(configPath).customRulesPaths).toEqual(["@acme/universcan-pack"]);
+  });
+
+  it("resolves a relative path against an explicit baseDir for programmatic use", () => {
+    const config = loadConfigFromObject({ customRulesPaths: ["./rules/local.js"] }, "/srv/app");
+    expect(config.customRulesPaths).toEqual([join("/srv/app", "rules", "local.js")]);
+  });
+});
