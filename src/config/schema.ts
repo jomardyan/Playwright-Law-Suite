@@ -15,6 +15,13 @@ export interface ConsentSimulationConfig {
   rejectSelectors?: string[];
   acceptSelectors?: string[];
   testWithdrawal?: boolean;
+  /**
+   * Whether to run an extra simulated visit that asserts Global Privacy
+   * Control (`Sec-GPC: 1` + `navigator.globalPrivacyControl`). Defaults to
+   * true. Turning it off makes every universal-opt-out rule report
+   * `not-evaluated`, never a pass.
+   */
+  probeGlobalPrivacyControl?: boolean;
 }
 
 export interface SourceModeConfig {
@@ -106,6 +113,7 @@ export const DEFAULT_CONFIG: UniVerscanConfig = {
   consent: {
     enabled: true,
     testWithdrawal: true,
+    probeGlobalPrivacyControl: true,
     acceptSelectors: [
       "text=/accept all/i",
       "text=/allow all/i",

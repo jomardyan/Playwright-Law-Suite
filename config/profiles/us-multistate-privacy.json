@@ -1,0 +1,27 @@
+{
+  "extends": "global-baseline",
+  "jurisdictions": [
+    "United States - California",
+    "United States - Colorado",
+    "United States - Connecticut",
+    "United States - Oregon",
+    "United States - Texas",
+    "United States - New Jersey"
+  ],
+  "customerMarkets": ["United States"],
+  "regulatoryPacks": [
+    "us-ca-ccpa-cpra",
+    "us-state-privacy",
+    "wcag-accessibility",
+    "global-data-security"
+  ],
+  "consent": {
+    "enabled": true,
+    "testWithdrawal": true,
+    "probeGlobalPrivacyControl": true
+  },
+  "reporting": {
+    "formats": ["json", "html", "sarif", "console"],
+    "outputDir": "./universcan-report"
+  }
+}

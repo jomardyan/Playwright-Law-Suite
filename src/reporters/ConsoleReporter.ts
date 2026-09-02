@@ -28,6 +28,7 @@ export function printConsoleReport(report: ScanReport): void {
   lines.push(`  Rules skipped (not applicable): ${report.coverage.rulesSkippedNotApplicable}`);
   lines.push(`  Rules not evaluated: ${report.coverage.rulesNotEvaluated}`);
   lines.push(`  Manual review items: ${report.coverage.manualReviewItems}`);
+  lines.push(`  Suppressed by documented exception: ${report.coverage.findingsSuppressedByException ?? 0}`);
   lines.push("");
   lines.push("Risk indicators (not a legal compliance score)");
   lines.push(`  Automated technical coverage: ${pct(report.riskIndicators.automatedTechnicalCoverage)}`);
@@ -46,6 +47,15 @@ export function printConsoleReport(report: ScanReport): void {
       if (finding.affectedUrl) lines.push(`    at: ${finding.affectedUrl}`);
     }
     if (items.length > 50) lines.push(`  ... and ${items.length - 50} more`);
+    lines.push("");
+  }
+
+  if (report.suppressedFindings.length > 0) {
+    lines.push(`Accepted risks, suppressed by configuration (${report.suppressedFindings.length})`);
+    for (const entry of report.suppressedFindings) {
+      lines.push(`  [${entry.finding.ruleId}] ${entry.reason}${entry.approvedBy ? ` (accepted by ${entry.approvedBy})` : ""}`);
+    }
+    lines.push("  These are recorded accepted risks, not resolved findings.");
     lines.push("");
   }
 

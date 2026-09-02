@@ -10,6 +10,12 @@ import { auPrivacyAccessibilityPack } from "./au-privacy-accessibility/pack.js";
 import { brLgpdPack } from "./br-lgpd/pack.js";
 import { caPipedaPack } from "./ca-pipeda/pack.js";
 import { jpAppiPack } from "./jp-appi/pack.js";
+import { euAccessibilityActPack } from "./eu-accessibility-act/pack.js";
+import { euAiActPack } from "./eu-ai-act/pack.js";
+import { euConsumerRightsPack } from "./eu-consumer-rights/pack.js";
+import { usStatePrivacyPack } from "./us-state-privacy/pack.js";
+import { inDpdpPack } from "./in-dpdp/pack.js";
+import { globalDataSecurityPack } from "./global-data-security/pack.js";
 
 /**
  * The engine never contains country-specific legal logic; it only knows how
@@ -26,6 +32,12 @@ const BUILT_IN_PACKS: RegulatoryPack[] = [
   brLgpdPack,
   caPipedaPack,
   jpAppiPack,
+  euAccessibilityActPack,
+  euAiActPack,
+  euConsumerRightsPack,
+  usStatePrivacyPack,
+  inDpdpPack,
+  globalDataSecurityPack,
 ];
 
 export class PackLoader {

@@ -50,6 +50,14 @@ Project-specific exclusions (`ignoredFindings`, `crawl.excludedRoutes`) must
 be added explicitly to the config, with a `reason`, not by editing rule
 logic.
 
+`ignoredFindings` is enforced by `src/engine/ExceptionFilter.ts`, and it is
+deliberately hard to abuse: an entry with no `reason` is rejected outright,
+an entry past its `expires` date stops applying, a suppressed finding is
+moved to `report.suppressedFindings` rather than deleted, and a
+`not-evaluated` finding can never be suppressed. An agent must not add an
+exception on its own initiative - only a human with the authority to accept
+that risk can, and the `reason`/`approvedBy` fields must record who did.
+
 ### Step 5 - Start the application and verify access
 
 For source mode, only pass `--allow-install`/`--allow-build` (or set
@@ -61,10 +69,15 @@ behavior, not a bug to work around.
 
 ### Step 6 - Discover routes
 
-Let `SiteDiscovery` find routes via sitemap.xml or link crawling. Prioritize
-legally significant journeys: home, login, registration, checkout, payment,
-account, cancellation, subscription management, privacy policy, cookie
-policy, terms, contact, newsletter signup.
+Let `SiteDiscovery` find routes via robots.txt-declared sitemaps,
+`/sitemap.xml`, or link crawling. Prioritize legally significant journeys:
+home, login, registration, checkout, payment, account, cancellation,
+subscription management, privacy policy, cookie policy, terms, contact,
+newsletter signup.
+
+`crawl.respectRobotsTxt` defaults to true and must stay true unless the user
+owns the target or has written permission to scan it in full. Pages excluded
+by robots.txt are logged as unscanned; they are never reported as passing.
 
 ### Step 7 - Execute applicable regulatory packs
 
@@ -90,9 +103,11 @@ distinctions - do not collapse them into a single "N issues found" number.
 ### Step 10 - Produce the report
 
 Use `writeReports()` / the CLI's `--format` flag to emit JSON, HTML,
-console, and/or JUnit output. The HTML report's executive dashboard is the
-right artifact to hand to a non-technical stakeholder; it deliberately does
-not present a single compliance percentage.
+console, JUnit, SARIF, Markdown, and/or CSV output. The HTML report's
+executive dashboard is the right artifact to hand to a non-technical
+stakeholder; it deliberately does not present a single compliance
+percentage. See "Reporting results to a human" below for which format suits
+which audience.
 
 ### Step 11 - Remediate in the application, not the scanner
 
@@ -105,9 +120,19 @@ explicitly said to.
 
 ### Step 12 - Re-scan and compare
 
-After remediation, run UniVerscan again and diff the findings against the
-previous report to confirm the fix worked and did not introduce a
-regression elsewhere.
+After remediation, run UniVerscan again and diff against the previous
+report:
+
+```bash
+node dist/cli.js diff --baseline ./before/report.json --current ./after/report.json
+```
+
+Read the diff carefully before reporting success. A finding that
+disappeared was fixed, *or* suppressed by a config exception, *or* on a page
+the second scan did not reach - establish which. The diff's
+`evaluationRegressions` section lists rules that produced a result before
+and report `not-evaluated` now: that is lost coverage, and must never be
+summarized as a fix.
 
 ## Agent safety rules
 
@@ -133,6 +158,22 @@ Agents using UniVerscan must never:
 When legal interpretation is uncertain, classify the finding
 `manual-review` rather than guessing at a verdict.
 
+## Reporting results to a human
+
+Pick the format for the audience:
+
+- `html` - the executive dashboard, for a non-technical stakeholder.
+- `markdown` - a CI job summary or a PR comment.
+- `sarif` - GitHub code scanning; suppressed findings are uploaded with
+  their justification so accepted risks stay visible.
+- `csv` - spreadsheet triage across a large finding set.
+- `junit` - a test-reporter integration.
+
+Whichever you use, keep the finding classes apart. "N issues found"
+collapses confirmed violations, items awaiting legal review, and checks that
+could not run into one number that means nothing; every reporter in this
+repository separates them, and a summary written by an agent must too.
+
 ## Extending UniVerscan
 
 The scanning engine (`src/engine/**`) contains no jurisdiction-specific
@@ -149,6 +190,14 @@ logic. To add a new regulatory pack:
    the engine at all.
 4. Link every rule to an authoritative source (legislation, a regulator's
    own guidance, or a recognized technical standard) in `legalReference`.
+5. Set the pack's `effectiveDate` to the date its obligations actually bite,
+   not the date the pack was written. A pack for a regulation that applies
+   in the future still runs, so a team sees the work before the deadline -
+   but a report must never imply an obligation is already in force.
+6. If a rule needs a signal no module collects yet, add the collector to
+   `src/modules/` and surface it on `PageContext`, rather than reaching into
+   the DOM from inside a rule. Rules run after the crawl has finished, so
+   the live `Page` no longer sits on the URL the rule is reasoning about.
 
 This plugin architecture is what makes worldwide coverage additive rather
 than a rewrite: adding Country N+1 never requires touching the engine or

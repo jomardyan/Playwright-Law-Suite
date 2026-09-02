@@ -2,10 +2,20 @@
   "target": {
     "url": "https://example.com"
   },
-  "jurisdictions": ["European Union"],
+  "jurisdictions": [
+    "European Union"
+  ],
   "businessSector": "e-commerce",
-  "customerMarkets": ["European Union"],
-  "regulatoryPacks": ["eu-gdpr-eprivacy", "wcag-accessibility"],
+  "customerMarkets": [
+    "European Union"
+  ],
+  "regulatoryPacks": [
+    "eu-gdpr-eprivacy",
+    "eu-accessibility-act",
+    "eu-consumer-rights",
+    "wcag-accessibility",
+    "global-data-security"
+  ],
   "accessibility": {
     "standard": "wcag22aa",
     "includeInteractionChecks": true
@@ -16,14 +26,35 @@
   },
   "consent": {
     "enabled": true,
-    "testWithdrawal": true
+    "testWithdrawal": true,
+    "probeGlobalPrivacyControl": true
   },
   "reporting": {
-    "formats": ["json", "html", "console"],
+    "formats": [
+      "json",
+      "html",
+      "sarif",
+      "markdown",
+      "console"
+    ],
     "outputDir": "./universcan-report"
   },
   "ci": {
-    "failOn": ["critical", "high"],
-    "warnOn": ["medium", "manual-review"]
-  }
+    "failOn": [
+      "critical",
+      "high"
+    ],
+    "warnOn": [
+      "medium",
+      "manual-review"
+    ]
+  },
+  "ignoredFindings": [
+    {
+      "ruleId": "security-response-headers",
+      "reason": "Security headers are applied at the CDN edge, which sits in front of production but not in front of this staging origin.",
+      "approvedBy": "security-team@example.com",
+      "expires": "2027-01-01"
+    }
+  ]
 }

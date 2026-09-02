@@ -55,6 +55,29 @@ export function writeHtmlReport(report: ScanReport, outputDir: string): string {
     return order.indexOf(a.severity) - order.indexOf(b.severity);
   });
 
+  const suppressedRows = report.suppressedFindings
+    .map(
+      (entry) =>
+        `<tr><td>${escapeHtml(entry.finding.ruleId)}</td><td><span class="badge" style="background:${
+          SEVERITY_COLOR[entry.finding.severity] ?? "#444"
+        }">${escapeHtml(entry.finding.severity)}</span></td><td>${escapeHtml(entry.reason)}</td><td>${escapeHtml(
+          entry.approvedBy ?? "-"
+        )}</td><td>${escapeHtml(entry.expires ?? "-")}</td></tr>`
+    )
+    .join("\n");
+
+  const suppressedSection =
+    report.suppressedFindings.length === 0
+      ? ""
+      : `<section>
+    <h2>Accepted risks, suppressed by configuration (${report.suppressedFindings.length})</h2>
+    <p class="note">These findings matched a documented exception in the scan configuration. They are recorded here, not resolved.</p>
+    <table>
+      <thead><tr><th>Rule</th><th>Severity</th><th>Reason</th><th>Accepted by</th><th>Expires</th></tr></thead>
+      <tbody>${suppressedRows}</tbody>
+    </table>
+  </section>`;
+
   const thirdPartyRows = report.thirdPartyServices
     .map(
       (record) =>
@@ -86,6 +109,7 @@ export function writeHtmlReport(report: ScanReport, outputDir: string): string {
   th { background: #eef0f3; font-weight: 600; }
   .badge { color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase; }
   footer { padding: 16px 32px; font-size: 12px; color: #6b7280; }
+  .note { font-size: 13px; color: #5a6273; margin: 4px 0 12px 0; }
 </style>
 </head>
 <body>
@@ -110,6 +134,7 @@ export function writeHtmlReport(report: ScanReport, outputDir: string): string {
       ${statTile("Rules evaluated", String(report.coverage.rulesEvaluated))}
       ${statTile("Rules not evaluated", String(report.coverage.rulesNotEvaluated))}
       ${statTile("Manual review items", String(report.coverage.manualReviewItems))}
+      ${statTile("Suppressed by exception", String(report.coverage.findingsSuppressedByException ?? 0))}
       ${statTile("Automated technical coverage", pct(report.riskIndicators.automatedTechnicalCoverage))}
       ${statTile("Detected technical conformity", pct(report.riskIndicators.detectedTechnicalConformity))}
       ${statTile("Unresolved compliance risk", pct(report.riskIndicators.unresolvedComplianceRisk))}
@@ -127,6 +152,8 @@ export function writeHtmlReport(report: ScanReport, outputDir: string): string {
       </tbody>
     </table>
   </section>
+
+  ${suppressedSection}
 
   <section>
     <h2>Third-Party Service Inventory (${report.thirdPartyServices.length})</h2>
