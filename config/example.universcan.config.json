@@ -1,0 +1,29 @@
+{
+  "target": {
+    "url": "https://example.com"
+  },
+  "jurisdictions": ["European Union"],
+  "businessSector": "e-commerce",
+  "customerMarkets": ["European Union"],
+  "regulatoryPacks": ["eu-gdpr-eprivacy", "wcag-accessibility"],
+  "accessibility": {
+    "standard": "wcag22aa",
+    "includeInteractionChecks": true
+  },
+  "crawl": {
+    "depth": 2,
+    "pageLimit": 20
+  },
+  "consent": {
+    "enabled": true,
+    "testWithdrawal": true
+  },
+  "reporting": {
+    "formats": ["json", "html", "console"],
+    "outputDir": "./universcan-report"
+  },
+  "ci": {
+    "failOn": ["critical", "high"],
+    "warnOn": ["medium", "manual-review"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "global-baseline",
+  "jurisdictions": ["United States - California"],
+  "businessSector": "consumer",
+  "customerMarkets": ["United States - California"],
+  "regulatoryPacks": ["us-ca-ccpa-cpra", "wcag-accessibility"],
+  "accessibility": {
+    "standard": "wcag21aa",
+    "includeInteractionChecks": true
+  }
+}
