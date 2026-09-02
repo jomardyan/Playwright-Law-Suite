@@ -33,7 +33,10 @@ async function captureBrowserState(page: Page, requests: TrackedRequest[], conse
     })),
     localStorageKeys: storage.localStorage,
     sessionStorageKeys: storage.sessionStorage,
-    thirdPartyRequests: requests,
+    // Snapshot, not a live reference: the request-tracking listener stays
+    // attached to the context after this call returns (e.g. through the
+    // withdrawal phase), and would otherwise keep mutating this array.
+    thirdPartyRequests: [...requests],
   };
 }
 

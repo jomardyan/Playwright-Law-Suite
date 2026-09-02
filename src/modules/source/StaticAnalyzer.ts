@@ -196,7 +196,6 @@ export async function runStaticAnalysis(repoPath: string): Promise<Finding[]> {
           remediation: rule.remediation,
           manualReviewRequired: false,
         });
-        if (!globalPattern.global) break;
       }
     }
   }

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import type { SourceModeConfig } from "../../config/schema.js";
 import type { FrameworkDetectionResult } from "./FrameworkDetector.js";
 import { logger } from "../../utils/logger.js";
@@ -36,14 +36,16 @@ async function waitForServer(url: string, timeoutMs: number): Promise<boolean> {
 }
 
 /** Serves repoPath as static files - no external dependency required for the static-html case. */
-function serveStaticDirectory(repoPath: string, port: number): StartedApplication {
+export function serveStaticDirectory(repoPath: string, port: number): StartedApplication {
   const server = createServer(async (req, res) => {
     try {
       const requestedPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
-      const safePath = normalize(join(repoPath, requestedPath)).startsWith(normalize(repoPath))
-        ? join(repoPath, requestedPath)
-        : repoPath;
-      let filePath = safePath;
+      const normalizedRoot = normalize(repoPath);
+      const resolved = normalize(join(repoPath, requestedPath));
+      // Boundary-aware containment check: a plain startsWith on the string would
+      // treat a sibling directory like "<root>-internal" as being inside "<root>".
+      const isContained = resolved === normalizedRoot || resolved.startsWith(normalizedRoot + sep);
+      let filePath = isContained ? resolved : normalizedRoot;
       const info = await stat(filePath).catch(() => null);
       if (!info || info.isDirectory()) {
         filePath = join(filePath, "index.html");

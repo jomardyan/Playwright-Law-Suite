@@ -71,11 +71,20 @@ program
 
     const violationStatuses = new Set(["violation", "probable-violation", "risk", "missing-disclosure", "inconsistent"]);
     const failOnSeverities = config.ci?.failOn ?? ["critical", "high"];
-    const hasBlockingFinding = report.findings.some(
+    const warnOnSeverities = config.ci?.warnOn ?? [];
+
+    const blockingCount = report.findings.filter(
       (f) => violationStatuses.has(f.status) && failOnSeverities.includes(f.severity)
-    );
-    if (hasBlockingFinding) {
-      logger.error(`Scan found findings at or above the configured fail-on severities: ${failOnSeverities.join(", ")}`);
+    ).length;
+    const warningCount = report.findings.filter(
+      (f) => violationStatuses.has(f.status) && warnOnSeverities.includes(f.severity)
+    ).length;
+
+    if (warningCount > 0) {
+      logger.warn(`Scan found ${warningCount} finding(s) at the configured warn-on severities: ${warnOnSeverities.join(", ")}`);
+    }
+    if (blockingCount > 0) {
+      logger.error(`Scan found ${blockingCount} finding(s) at or above the configured fail-on severities: ${failOnSeverities.join(", ")}`);
       process.exitCode = 1;
     }
   });

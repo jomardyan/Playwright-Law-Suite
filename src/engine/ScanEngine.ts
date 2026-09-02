@@ -242,7 +242,16 @@ export class ScanEngine {
     if (localUrl) {
       const liveConfig: UniVerscanConfig = { ...config, target: { ...config.target, url: localUrl } };
       report = await this.runLive(liveConfig);
-      report.findings = [...staticFindings, ...report.findings];
+      const mergedFindings = [...staticFindings, ...report.findings];
+      const coverage: CoverageSummary = {
+        ...report.coverage,
+        manualReviewItems: mergedFindings.filter((f) => f.manualReviewRequired).length,
+      };
+      report.findings = mergedFindings;
+      report.coverage = coverage;
+      // Recompute from the merged finding set: the live-only figures buildReport()
+      // produced inside runLive() no longer reflect the static findings just added.
+      report.riskIndicators = computeRiskIndicators(mergedFindings, coverage, config);
       report.meta.mode = "combined";
       report.meta.target = { repoPath, url: localUrl };
     } else {
