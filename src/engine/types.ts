@@ -5,6 +5,9 @@ import type { AxeViolationSummary, InteractionCheckResult } from "../modules/acc
 import type { PrivacyDocument } from "../modules/privacy/PrivacyDocumentScanner.js";
 import type { FormRecord } from "../modules/forms/FormsScanner.js";
 import type { ConsentFlowResult } from "../modules/cookies/CookieScanner.js";
+import type { SecurityHeaderReport } from "../modules/security/SecurityHeaderScanner.js";
+import type { AiInteractionReport } from "../modules/ai/AiInteractionDetector.js";
+import type { ConsumerJourneyReport } from "../modules/consumer/ConsumerJourneyScanner.js";
 
 /**
  * Severity reflects impact if the underlying issue is real.
@@ -99,6 +102,14 @@ export type ConsentState =
   | "accept-all"
   | "custom-selection"
   | "withdrawn"
+  /**
+   * A visit made with a universal opt-out signal asserted (Global Privacy
+   * Control: the `Sec-GPC: 1` request header plus
+   * `navigator.globalPrivacyControl === true`), with no other consent
+   * interaction. Several US state privacy laws treat this signal as a
+   * legally binding opt-out request in its own right.
+   */
+  | "gpc-signal"
   | "unknown";
 
 export interface CapturedState {
@@ -127,6 +138,12 @@ export interface PageContext {
   interactionChecks: InteractionCheckResult[];
   forms: FormRecord[];
   privacyDocuments: PrivacyDocument[];
+  /** Main-document transport/response headers, or null when the response was not captured. */
+  securityHeaders: SecurityHeaderReport | null;
+  /** Signals that the page exposes an AI system the visitor interacts with directly. */
+  aiInteraction: AiInteractionReport | null;
+  /** Consumer-protection signals: withdrawal controls, order-button labelling, urgency claims. */
+  consumerJourney: ConsumerJourneyReport | null;
 }
 
 export interface SourceModeContext {
@@ -196,6 +213,21 @@ export interface CoverageSummary {
   rulesNotEvaluated: number;
   pagesScanned: number;
   manualReviewItems: number;
+  /** Findings moved out of `findings` by an explicit, documented config exception. */
+  findingsSuppressedByException: number;
+}
+
+/**
+ * A finding that matched an accepted-risk exception in
+ * `config.ignoredFindings`. Suppressed findings are never deleted: they are
+ * moved to their own section of the report, together with the reason and
+ * approver recorded in the config, so the accepted risk stays auditable.
+ */
+export interface SuppressedFinding {
+  finding: Finding;
+  reason: string;
+  approvedBy?: string;
+  expires?: string;
 }
 
 export interface ScanReport {
@@ -208,6 +240,8 @@ export interface ScanReport {
     packs: Array<{ id: string; regulation: string; version: string }>;
   };
   findings: Finding[];
+  /** Findings withheld from `findings` by a documented exception in the config. */
+  suppressedFindings: SuppressedFinding[];
   thirdPartyServices: ThirdPartyServiceRecord[];
   coverage: CoverageSummary;
   riskIndicators: {

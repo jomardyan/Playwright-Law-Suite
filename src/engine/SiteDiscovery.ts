@@ -3,6 +3,7 @@ import type { Page } from "playwright";
 import type { UniVerscanConfig } from "../config/schema.js";
 import type { DiscoveredRoute } from "./types.js";
 import { logger } from "../utils/logger.js";
+import { EMPTY_ROBOTS, fetchRobotsTxt, isAllowedByRobots, type RobotsRules } from "../utils/robots.js";
 
 const PRIORITY_KEYWORDS: Array<{ pattern: RegExp; priority: number; label: string }> = [
   { pattern: /^\/?$/, priority: 100, label: "home" },
@@ -28,9 +29,8 @@ function scoreRoute(pathname: string): { priority: number; label?: string } {
   return { priority: 40 };
 }
 
-async function tryLoadSitemap(baseUrl: string): Promise<string[]> {
+async function tryLoadSitemap(baseUrl: string, sitemapUrl = new URL("/sitemap.xml", baseUrl).toString()): Promise<string[]> {
   try {
-    const sitemapUrl = new URL("/sitemap.xml", baseUrl).toString();
     const response = await fetch(sitemapUrl, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) return [];
     const xml = await response.text();
@@ -41,7 +41,7 @@ async function tryLoadSitemap(baseUrl: string): Promise<string[]> {
     const list = Array.isArray(urls) ? urls : [urls];
     return list.map((entry) => entry.loc).filter((loc): loc is string => typeof loc === "string");
   } catch (error) {
-    logger.debug("sitemap.xml not available or unparsable", error);
+    logger.debug(`Sitemap ${sitemapUrl} not available or unparsable`, error);
     return [];
   }
 }
@@ -67,12 +67,25 @@ export class SiteDiscovery {
   async discover(baseUrl: string, page: Page, config: UniVerscanConfig): Promise<DiscoveredRoute[]> {
     const origin = new URL(baseUrl).origin;
     const routes = new Map<string, DiscoveredRoute>();
+    let robotsBlocked = 0;
+
+    const robots: RobotsRules = config.crawl.respectRobotsTxt === false ? EMPTY_ROBOTS : await fetchRobotsTxt(baseUrl);
+    if (robots.loaded) {
+      logger.info(`robots.txt loaded: ${robots.disallow.length} disallow rule(s) apply to UniVerscan`);
+    }
 
     const addRoute = (url: string, source: DiscoveredRoute["source"]) => {
       try {
         const parsed = new URL(url, baseUrl);
         if (parsed.origin !== origin) return;
         if (isExcluded(parsed.pathname, config)) return;
+        // robots.txt rules are matched against the path *and* query string:
+        // rules such as "Disallow: /search?*" are common and only work when
+        // the query is included.
+        if (!isAllowedByRobots(`${parsed.pathname}${parsed.search}`, robots)) {
+          robotsBlocked += 1;
+          return;
+        }
         const key = parsed.toString();
         if (routes.has(key)) return;
         const { priority, label } = scoreRoute(parsed.pathname);
@@ -84,8 +97,10 @@ export class SiteDiscovery {
 
     addRoute(baseUrl, "config");
 
-    const sitemapUrls = await tryLoadSitemap(baseUrl);
-    for (const url of sitemapUrls) addRoute(url, "sitemap");
+    const sitemapSources = robots.sitemaps.length > 0 ? robots.sitemaps : [new URL("/sitemap.xml", baseUrl).toString()];
+    for (const sitemapUrl of sitemapSources) {
+      for (const url of await tryLoadSitemap(baseUrl, sitemapUrl)) addRoute(url, "sitemap");
+    }
 
     if (routes.size < config.crawl.pageLimit) {
       await page.goto(baseUrl, { waitUntil: "domcontentloaded" }).catch(() => undefined);
@@ -94,6 +109,14 @@ export class SiteDiscovery {
         .evaluateAll((elements) => elements.map((el) => (el as HTMLAnchorElement).href))
         .catch(() => [] as string[]);
       for (const link of links) addRoute(link, "link-crawl");
+    }
+
+    if (robotsBlocked > 0) {
+      // Surfaced rather than silent: pages excluded here are simply not
+      // scanned, and an unscanned page must never be read as a compliant one.
+      logger.warn(
+        `${robotsBlocked} discovered URL(s) were skipped because robots.txt disallows them. Those pages are unscanned, not compliant.`
+      );
     }
 
     const sorted = Array.from(routes.values()).sort((a, b) => b.priority - a.priority);

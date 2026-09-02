@@ -7,7 +7,8 @@
     "United States - California",
     "Brazil",
     "Canada",
-    "Japan"
+    "Japan",
+    "India"
   ],
   "customerMarkets": [
     "European Union",
@@ -16,10 +17,26 @@
     "United States - California",
     "Brazil",
     "Canada",
-    "Japan"
+    "Japan",
+    "India"
   ],
   "crawl": {
     "depth": 3,
     "pageLimit": 40
+  },
+  "consent": {
+    "enabled": true,
+    "testWithdrawal": true,
+    "probeGlobalPrivacyControl": true
+  },
+  "reporting": {
+    "formats": [
+      "json",
+      "html",
+      "sarif",
+      "markdown",
+      "console"
+    ],
+    "outputDir": "./universcan-report"
   }
 }

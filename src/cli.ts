@@ -1,20 +1,40 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ScanEngine } from "./engine/ScanEngine.js";
 import { loadConfig, loadConfigFromObject } from "./config/loader.js";
 import { PackLoader } from "./packs/PackLoader.js";
-import { writeReports } from "./reporters/index.js";
+import { writeReports, renderMarkdownReport } from "./reporters/index.js";
+import { diffReports, renderDiffMarkdown } from "./engine/ReportDiff.js";
 import { logger } from "./utils/logger.js";
 import type { UniVerscanConfig } from "./config/schema.js";
-import type { Severity } from "./engine/types.js";
+import type { ScanReport, Severity } from "./engine/types.js";
 
 const program = new Command();
 
-program.name("universcan").description("Universal Playwright Web Compliance Scanner").version("0.1.0");
+program.name("universcan").description("Universal Playwright Web Compliance Scanner").version("0.2.0");
 
 function splitList(value?: string): string[] | undefined {
   return value ? value.split(",").map((v) => v.trim()).filter(Boolean) : undefined;
+}
+
+/** Reads a report.json written by a previous scan, or logs why it could not. */
+function readReport(path: string): ScanReport | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as ScanReport;
+    if (!Array.isArray(parsed.findings)) {
+      logger.error(`${path} does not look like a UniVerscan report (no 'findings' array).`);
+      return null;
+    }
+    // Reports written before suppression support have no such array; default
+    // it so a diff against an older baseline still works.
+    parsed.suppressedFindings = parsed.suppressedFindings ?? [];
+    return parsed;
+  } catch (error) {
+    logger.error(`Could not read report at ${path}`, error);
+    return null;
+  }
 }
 
 program
@@ -27,11 +47,13 @@ program
   .option("--packs <list>", "Comma-separated regulatory pack ids to restrict the scan to")
   .option("--sector <sector>", "Business sector, e.g. 'e-commerce'")
   .option("--accessibility-standard <standard>", "wcag2a | wcag2aa | wcag21aa | wcag22aa | wcag22aaa")
-  .option("--format <list>", "Comma-separated report formats: json,html,console,junit")
+  .option("--format <list>", "Comma-separated report formats: json,html,console,junit,sarif,markdown,csv")
   .option("--out <dir>", "Output directory for reports", "./universcan-report")
   .option("--allow-install", "Permit installing dependencies in source mode", false)
   .option("--allow-build", "Permit building/starting the application in source mode", false)
   .option("--fail-on <list>", "Comma-separated severities that cause a non-zero exit code")
+  .option("--baseline <path>", "Path to a previous report.json; prints what changed since that scan")
+  .option("--fail-on-new", "Only fail on findings that are new relative to --baseline", false)
   .action(async (options) => {
     let config: UniVerscanConfig;
     if (options.config) {
@@ -73,13 +95,38 @@ program
     const failOnSeverities = config.ci?.failOn ?? ["critical", "high"];
     const warnOnSeverities = config.ci?.warnOn ?? [];
 
-    const blockingCount = report.findings.filter(
+    // With --baseline, the gate can be narrowed to findings this change
+    // introduced. Pre-existing findings still appear in every report; they
+    // are just not treated as this run's regression.
+    let gatedFindings = report.findings;
+    if (options.baseline) {
+      const baseline = readReport(resolve(options.baseline));
+      if (!baseline) {
+        process.exitCode = 2;
+        return;
+      }
+      const diff = diffReports(baseline, report);
+      console.log(renderDiffMarkdown(diff));
+      if (options.failOnNew) {
+        gatedFindings = diff.newFindings.map((entry) => entry.finding);
+        logger.info(`--fail-on-new: gating on ${gatedFindings.length} new finding(s) only.`);
+      }
+    } else if (options.failOnNew) {
+      logger.warn("--fail-on-new has no effect without --baseline; gating on all findings.");
+    }
+
+    const blockingCount = gatedFindings.filter(
       (f) => violationStatuses.has(f.status) && failOnSeverities.includes(f.severity)
     ).length;
-    const warningCount = report.findings.filter(
+    const warningCount = gatedFindings.filter(
       (f) => violationStatuses.has(f.status) && warnOnSeverities.includes(f.severity)
     ).length;
 
+    if (report.coverage.rulesNotEvaluated > 0) {
+      logger.warn(
+        `${report.coverage.rulesNotEvaluated} rule(s) could not be evaluated in this scan. They are reported as 'not-evaluated', not as passes.`
+      );
+    }
     if (warningCount > 0) {
       logger.warn(`Scan found ${warningCount} finding(s) at the configured warn-on severities: ${warnOnSeverities.join(", ")}`);
     }
@@ -90,12 +137,54 @@ program
   });
 
 program
+  .command("diff")
+  .description("Compare two report.json files to verify a remediation round: what is new, fixed, changed, or no longer evaluated")
+  .requiredOption("--baseline <path>", "Path to the earlier report.json")
+  .requiredOption("--current <path>", "Path to the later report.json")
+  .option("--fail-on-new", "Exit non-zero when the current report contains findings the baseline did not", false)
+  .action((options) => {
+    const baseline = readReport(resolve(options.baseline));
+    const current = readReport(resolve(options.current));
+    if (!baseline || !current) {
+      process.exitCode = 2;
+      return;
+    }
+    const diff = diffReports(baseline, current);
+    console.log(renderDiffMarkdown(diff));
+    if (options.failOnNew && diff.newFindings.length > 0) {
+      logger.error(`${diff.newFindings.length} new finding(s) relative to the baseline.`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("report")
+  .description("Re-render an existing report.json in another format without re-scanning")
+  .requiredOption("--input <path>", "Path to a report.json")
+  .option("--format <format>", "markdown (default)", "markdown")
+  .action((options) => {
+    const report = readReport(resolve(options.input));
+    if (!report) {
+      process.exitCode = 2;
+      return;
+    }
+    if (options.format !== "markdown") {
+      logger.error(`Unsupported re-render format '${options.format}'. Supported: markdown.`);
+      process.exitCode = 2;
+      return;
+    }
+    console.log(renderMarkdownReport(report));
+  });
+
+program
   .command("packs")
   .description("List built-in regulatory packs")
   .action(() => {
     const loader = new PackLoader();
     for (const pack of loader.listBuiltIn()) {
-      console.log(`${pack.id}\t${pack.regulation}\t${pack.jurisdiction}\tv${pack.version}\t${pack.rules.length} rule(s)`);
+      console.log(
+        `${pack.id}\t${pack.regulation}\t${pack.jurisdiction}\tv${pack.version}\teffective ${pack.effectiveDate}\t${pack.rules.length} rule(s)`
+      );
     }
   });
 

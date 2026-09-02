@@ -67,6 +67,11 @@ async function clickFirstMatch(page: Page, selectors: string[] | undefined, time
 
 export interface ConsentFlowResult {
   states: CapturedState[];
+  /**
+   * True when the GPC probe ran. When false, the `gpc-signal` state is absent
+   * from `states` and rules must report `not-evaluated`, never a pass.
+   */
+  gpcProbeRan: boolean;
   bannerAcceptControlFound: boolean;
   bannerRejectControlFound: boolean;
   withdrawalControlFound: boolean;
@@ -85,6 +90,7 @@ export class CookieScanner {
 
   async runConsentFlow(url: string): Promise<ConsentFlowResult> {
     const states: CapturedState[] = [];
+    let gpcProbeRan = false;
 
     // --- Initial visit: no interaction with any consent control. ---
     const initialContext = await this.browserManager.newContext();
@@ -100,6 +106,23 @@ export class CookieScanner {
     let bannerRejectControlFound = false;
     let bannerAcceptControlFound = false;
     let withdrawalControlFound = false;
+
+    // --- Universal opt-out signal (Global Privacy Control) ---
+    // A separate simulated visitor that asserts GPC and takes no other
+    // consent action, so a rule can compare it against the plain
+    // before-consent visit. Both halves of the signal are sent: the
+    // `Sec-GPC: 1` request header and `navigator.globalPrivacyControl`.
+    if (this.config.probeGlobalPrivacyControl !== false) {
+      const gpcContext = await this.browserManager.newContext({ globalPrivacyControl: true });
+      const gpcRequests: TrackedRequest[] = [];
+      attachRequestTracking(gpcContext, gpcRequests);
+      const gpcPage = await gpcContext.newPage();
+      await gpcPage.goto(url, { waitUntil: "networkidle", timeout: 30_000 }).catch(() => undefined);
+      await gpcPage.waitForTimeout(1500);
+      states.push(await captureBrowserState(gpcPage, gpcRequests, "gpc-signal"));
+      gpcProbeRan = true;
+      await gpcContext.close();
+    }
 
     // --- Reject-all ---
     const rejectContext = await this.browserManager.newContext();
@@ -144,6 +167,7 @@ export class CookieScanner {
 
     return {
       states,
+      gpcProbeRan,
       bannerAcceptControlFound,
       bannerRejectControlFound,
       withdrawalControlFound,

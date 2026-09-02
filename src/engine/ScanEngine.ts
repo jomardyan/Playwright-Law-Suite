@@ -7,13 +7,25 @@ import { CookieScanner } from "../modules/cookies/CookieScanner.js";
 import { PrivacyDocumentScanner } from "../modules/privacy/PrivacyDocumentScanner.js";
 import { FormsScanner } from "../modules/forms/FormsScanner.js";
 import { NetworkIntelligence } from "../modules/network/NetworkIntelligence.js";
+import { SecurityHeaderScanner } from "../modules/security/SecurityHeaderScanner.js";
+import { AiInteractionDetector } from "../modules/ai/AiInteractionDetector.js";
+import { ConsumerJourneyScanner } from "../modules/consumer/ConsumerJourneyScanner.js";
+import { applyExceptions } from "./ExceptionFilter.js";
 import { PackLoader } from "../packs/PackLoader.js";
 import { notEvaluatedFinding } from "../packs/helpers.js";
 import { detectFramework } from "../modules/source/FrameworkDetector.js";
 import { startApplication } from "../modules/source/AppRunner.js";
 import { runStaticAnalysis } from "../modules/source/StaticAnalyzer.js";
 import { logger } from "../utils/logger.js";
-import type { CoverageSummary, Finding, PageContext, ScanContext, ScanReport, ThirdPartyServiceRecord } from "./types.js";
+import type {
+  CoverageSummary,
+  Finding,
+  PageContext,
+  ScanContext,
+  ScanReport,
+  SuppressedFinding,
+  ThirdPartyServiceRecord,
+} from "./types.js";
 
 function computeRiskIndicators(findings: Finding[], coverage: CoverageSummary, config: UniVerscanConfig) {
   const totalConsideredRules = coverage.rulesEvaluated + coverage.rulesSkippedNotApplicable;
@@ -36,7 +48,13 @@ export class ScanEngine {
   private readonly packLoader = new PackLoader();
 
   /** Runs every applicable rule from every loaded pack against a built ScanContext. */
-  private async evaluateRules(scanContext: ScanContext): Promise<{ findings: Finding[]; coverage: Omit<CoverageSummary, "pagesScanned" | "manualReviewItems"> }> {
+  private async evaluateRules(
+    scanContext: ScanContext
+  ): Promise<{
+    findings: Finding[];
+    coverage: Omit<CoverageSummary, "pagesScanned" | "manualReviewItems" | "findingsSuppressedByException">;
+    packs: Array<{ id: string; regulation: string; version: string }>;
+  }> {
     const packs = await this.packLoader.load(scanContext.config);
     const findings: Finding[] = [];
     let rulesEvaluated = 0;
@@ -85,6 +103,7 @@ export class ScanEngine {
         rulesSkippedNotApplicable,
         rulesNotEvaluated,
       },
+      packs: packs.map((p) => ({ id: p.id, regulation: p.regulation, version: p.version })),
     };
   }
 
@@ -93,6 +112,7 @@ export class ScanEngine {
     mode: ScanReport["meta"]["mode"],
     target: ScanReport["meta"]["target"],
     findings: Finding[],
+    suppressedFindings: SuppressedFinding[],
     thirdPartyServices: ThirdPartyServiceRecord[],
     coverage: CoverageSummary,
     packIds: Array<{ id: string; regulation: string; version: string }>
@@ -107,6 +127,7 @@ export class ScanEngine {
         packs: packIds,
       },
       findings,
+      suppressedFindings,
       thirdPartyServices,
       coverage,
       riskIndicators: computeRiskIndicators(findings, coverage, config),
@@ -131,14 +152,34 @@ export class ScanEngine {
     const privacyScanner = new PrivacyDocumentScanner();
     const cookieScanner = new CookieScanner(browserManager, config.consent);
     const networkIntel = new NetworkIntelligence();
+    const securityScanner = new SecurityHeaderScanner();
+    const aiDetector = new AiInteractionDetector();
+    const consumerScanner = new ConsumerJourneyScanner();
+    // Listeners are attached once per page object, before any navigation, so
+    // subresource requests on the very first route are captured too.
+    securityScanner.watch(page);
+    aiDetector.watch(page);
 
     const pages: PageContext[] = [];
     let thirdPartyServices: ThirdPartyServiceRecord[] = [];
 
     for (const [index, route] of routes.entries()) {
       logger.info(`Scanning ${route.url}`);
-      await page.goto(route.url, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch((error) => {
-        logger.warn(`Failed to navigate to ${route.url}`, error);
+      const response = await page
+        .goto(route.url, { waitUntil: "domcontentloaded", timeout: 30_000 })
+        .catch((error) => {
+          logger.warn(`Failed to navigate to ${route.url}`, error);
+          return null;
+        });
+
+      const securityHeaders = await securityScanner.collect(page, response).catch((error) => {
+        logger.warn(`Security header collection failed for ${route.url}`, error);
+        return null;
+      });
+      const aiInteraction = await aiDetector.detect(page).catch(() => null);
+      const consumerJourney = await consumerScanner.scan(page).catch((error) => {
+        logger.warn(`Consumer journey scan failed for ${route.url}`, error);
+        return null;
       });
 
       const accessibilityViolations = await accessibilityScanner.run(page, config.accessibility.standard).catch((error) => {
@@ -176,6 +217,9 @@ export class ScanEngine {
         interactionChecks,
         forms,
         privacyDocuments,
+        securityHeaders,
+        aiInteraction,
+        consumerJourney,
       });
     }
 
@@ -188,21 +232,28 @@ export class ScanEngine {
       startedAt: new Date().toISOString(),
     };
 
-    const { findings, coverage: partialCoverage } = await this.evaluateRules(scanContext);
+    const { findings: rawFindings, coverage: partialCoverage, packs: packIds } = await this.evaluateRules(scanContext);
+    const { findings, suppressed } = applyExceptions(rawFindings, config);
     const coverage: CoverageSummary = {
       ...partialCoverage,
       pagesScanned: pages.length,
       manualReviewItems: findings.filter((f) => f.manualReviewRequired).length,
+      findingsSuppressedByException: suppressed.length,
     };
 
     await authContext.close();
     await browserManager.close();
 
-    const packIds = await this.packLoader.load(config).then((packs) =>
-      packs.map((p) => ({ id: p.id, regulation: p.regulation, version: p.version }))
+    return this.buildReport(
+      config,
+      "live",
+      { url: config.target.url },
+      findings,
+      suppressed,
+      thirdPartyServices,
+      coverage,
+      packIds
     );
-
-    return this.buildReport(config, "live", { url: config.target.url }, findings, thirdPartyServices, coverage, packIds);
   }
 
   /**
@@ -242,12 +293,18 @@ export class ScanEngine {
     if (localUrl) {
       const liveConfig: UniVerscanConfig = { ...config, target: { ...config.target, url: localUrl } };
       report = await this.runLive(liveConfig);
-      const mergedFindings = [...staticFindings, ...report.findings];
+      // Static findings are subject to the same documented exceptions as
+      // live ones; runLive() already filtered its own set.
+      const { findings: keptStatic, suppressed: suppressedStatic } = applyExceptions(staticFindings, config);
+      const mergedFindings = [...keptStatic, ...report.findings];
+      const mergedSuppressed = [...suppressedStatic, ...report.suppressedFindings];
       const coverage: CoverageSummary = {
         ...report.coverage,
         manualReviewItems: mergedFindings.filter((f) => f.manualReviewRequired).length,
+        findingsSuppressedByException: mergedSuppressed.length,
       };
       report.findings = mergedFindings;
+      report.suppressedFindings = mergedSuppressed;
       report.coverage = coverage;
       // Recompute from the merged finding set: the live-only figures buildReport()
       // produced inside runLive() no longer reflect the static findings just added.
@@ -265,16 +322,15 @@ export class ScanEngine {
         source: { repoPath, framework: framework.name, localUrl: null, staticFindings },
         startedAt: new Date().toISOString(),
       };
-      const { findings, coverage: partialCoverage } = await this.evaluateRules(scanContext);
+      const { findings: ruleFindings, coverage: partialCoverage, packs: packIds } = await this.evaluateRules(scanContext);
+      const { findings, suppressed } = applyExceptions([...staticFindings, ...ruleFindings], config);
       const coverage: CoverageSummary = {
         ...partialCoverage,
         pagesScanned: 0,
-        manualReviewItems: [...staticFindings, ...findings].filter((f) => f.manualReviewRequired).length,
+        manualReviewItems: findings.filter((f) => f.manualReviewRequired).length,
+        findingsSuppressedByException: suppressed.length,
       };
-      const packIds = await this.packLoader.load(config).then((packs) =>
-        packs.map((p) => ({ id: p.id, regulation: p.regulation, version: p.version }))
-      );
-      report = this.buildReport(config, "source", { repoPath }, [...staticFindings, ...findings], [], coverage, packIds);
+      report = this.buildReport(config, "source", { repoPath }, findings, suppressed, [], coverage, packIds);
     }
 
     if (stopFn) await stopFn();

@@ -19,12 +19,39 @@ export class BrowserManager {
     this.browser = await chromium.launch({ headless: true, executablePath });
   }
 
-  async newContext(options?: { storageStatePath?: string }): Promise<BrowserContext> {
+  /**
+   * Creates an isolated browser context.
+   *
+   * `globalPrivacyControl` asserts a universal opt-out signal for the whole
+   * context, both halves of it: the `Sec-GPC: 1` request header on every
+   * request, and `navigator.globalPrivacyControl === true` for scripts that
+   * read the DOM property instead.
+   */
+  async newContext(options?: {
+    storageStatePath?: string;
+    globalPrivacyControl?: boolean;
+    viewport?: { width: number; height: number };
+    isMobile?: boolean;
+    locale?: string;
+  }): Promise<BrowserContext> {
     if (!this.browser) throw new Error("BrowserManager.launch() must be called first");
-    return this.browser.newContext({
+    const context = await this.browser.newContext({
       storageState: options?.storageStatePath,
-      viewport: { width: 1366, height: 900 },
+      viewport: options?.viewport ?? { width: 1366, height: 900 },
+      isMobile: options?.isMobile,
+      hasTouch: options?.isMobile,
+      locale: options?.locale,
+      extraHTTPHeaders: options?.globalPrivacyControl ? { "Sec-GPC": "1" } : undefined,
     });
+    if (options?.globalPrivacyControl) {
+      await context.addInitScript(() => {
+        Object.defineProperty(Navigator.prototype, "globalPrivacyControl", {
+          get: () => true,
+          configurable: true,
+        });
+      });
+    }
+    return context;
   }
 
   /**
