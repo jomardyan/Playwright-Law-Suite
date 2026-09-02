@@ -21,6 +21,19 @@ export function printConsoleReport(report: ScanReport): void {
   lines.push(`Generated: ${report.meta.generatedAt}`);
   lines.push(`Jurisdictions: ${report.meta.jurisdictions.join(", ") || "(none configured)"}`);
   lines.push(`Regulatory packs: ${report.meta.packs.map((p) => `${p.id}@${p.version}`).join(", ") || "(none)"}`);
+  if (report.meta.scopeDetection) {
+    const detection = report.meta.scopeDetection;
+    lines.push(
+      `Scope: INFERRED by autoscan (${detection.selected
+        .map((m) => `${m.jurisdiction} [${m.confidence}]`)
+        .join(", ") || "nothing detected"}) - confirm before relying on it.`
+    );
+    if (detection.considered.length > 0) {
+      lines.push(
+        `  Not scanned, evidence too thin: ${detection.considered.map((m) => m.jurisdiction).join(", ")} (unknown, not clean).`
+      );
+    }
+  }
   lines.push("");
   lines.push("Coverage");
   lines.push(`  Pages scanned: ${report.coverage.pagesScanned}`);

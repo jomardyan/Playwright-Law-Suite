@@ -17,6 +17,12 @@ export {
   printConsoleReport,
 } from "./reporters/index.js";
 export { applyExceptions } from "./engine/ExceptionFilter.js";
+export { detectScope } from "./engine/AutoScan.js";
+export { ScopeDetector, ccTldOf, parseLanguageTag } from "./modules/scope/ScopeDetector.js";
+export { resolveScope } from "./modules/scope/resolveScope.js";
+export type { ScopeDetection, DetectedMarket, ScopeConfidence } from "./modules/scope/resolveScope.js";
+export type { ScopeSignal, CanonicalJurisdiction } from "./modules/scope/signals.js";
+export { CANONICAL_JURISDICTIONS } from "./modules/scope/signals.js";
 export { diffReports, renderDiffMarkdown, findingKey } from "./engine/ReportDiff.js";
 export type { ReportDiff } from "./engine/ReportDiff.js";
 export { parseRobotsTxt, isAllowedByRobots } from "./utils/robots.js";

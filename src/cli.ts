@@ -7,6 +7,8 @@ import { loadConfig, loadConfigFromObject } from "./config/loader.js";
 import { PackLoader } from "./packs/PackLoader.js";
 import { writeReports, renderMarkdownReport } from "./reporters/index.js";
 import { diffReports, renderDiffMarkdown } from "./engine/ReportDiff.js";
+import { detectScope } from "./engine/AutoScan.js";
+import type { ScopeDetection } from "./modules/scope/resolveScope.js";
 import { logger } from "./utils/logger.js";
 import type { UniVerscanConfig } from "./config/schema.js";
 import type { ScanReport, Severity } from "./engine/types.js";
@@ -35,6 +37,104 @@ function readReport(path: string): ScanReport | null {
     logger.error(`Could not read report at ${path}`, error);
     return null;
   }
+}
+
+/**
+ * Baseline comparison, warn/fail counting, and exit code. Shared by `scan`
+ * and `autoscan` so the two gate on identical rules.
+ */
+function finishScan(
+  report: ScanReport,
+  config: UniVerscanConfig,
+  options: { baseline?: string; failOnNew?: boolean }
+): void {
+  const violationStatuses = new Set(["violation", "probable-violation", "risk", "missing-disclosure", "inconsistent"]);
+  const failOnSeverities = config.ci?.failOn ?? ["critical", "high"];
+  const warnOnSeverities = config.ci?.warnOn ?? [];
+
+  // With --baseline, the gate can be narrowed to findings this change
+  // introduced. Pre-existing findings still appear in every report; they are
+  // just not treated as this run's regression.
+  let gatedFindings = report.findings;
+  if (options.baseline) {
+    const baseline = readReport(resolve(options.baseline));
+    if (!baseline) {
+      process.exitCode = 2;
+      return;
+    }
+    const diff = diffReports(baseline, report);
+    console.log(renderDiffMarkdown(diff));
+    if (options.failOnNew) {
+      gatedFindings = diff.newFindings.map((entry) => entry.finding);
+      logger.info(`--fail-on-new: gating on ${gatedFindings.length} new finding(s) only.`);
+    }
+  } else if (options.failOnNew) {
+    logger.warn("--fail-on-new has no effect without --baseline; gating on all findings.");
+  }
+
+  const blockingCount = gatedFindings.filter(
+    (f) => violationStatuses.has(f.status) && failOnSeverities.includes(f.severity)
+  ).length;
+  const warningCount = gatedFindings.filter(
+    (f) => violationStatuses.has(f.status) && warnOnSeverities.includes(f.severity)
+  ).length;
+
+  if (report.coverage.rulesNotEvaluated > 0) {
+    logger.warn(
+      `${report.coverage.rulesNotEvaluated} rule(s) could not be evaluated in this scan. They are reported as 'not-evaluated', not as passes.`
+    );
+  }
+  if (warningCount > 0) {
+    logger.warn(`Scan found ${warningCount} finding(s) at the configured warn-on severities: ${warnOnSeverities.join(", ")}`);
+  }
+  if (blockingCount > 0) {
+    logger.error(`Scan found ${blockingCount} finding(s) at or above the configured fail-on severities: ${failOnSeverities.join(", ")}`);
+    process.exitCode = 1;
+  }
+}
+
+/** Renders the inferred scope, its evidence, and its caveats for the terminal. */
+function renderScopeDetection(detection: ScopeDetection, config: UniVerscanConfig): string {
+  const lines: string[] = [];
+  lines.push("");
+  lines.push("Autoscan - detected scope");
+  lines.push("=========================");
+
+  if (detection.inconclusive) {
+    lines.push("No target market could be determined from this site.");
+  } else {
+    lines.push("Markets selected for scanning:");
+    for (const market of detection.selected) {
+      lines.push(`  ${market.jurisdiction}  [${market.confidence} confidence, score ${market.score}]`);
+      for (const signal of market.evidence) {
+        lines.push(`      - ${signal.detail}  (${signal.kind}, ${signal.observedAt})`);
+      }
+    }
+  }
+
+  if (detection.considered.length > 0) {
+    lines.push("");
+    lines.push("Considered, but evidence too thin to scan against:");
+    for (const market of detection.considered) {
+      lines.push(`  ${market.jurisdiction}  [score ${market.score}]`);
+      for (const signal of market.evidence) {
+        lines.push(`      - ${signal.detail}  (${signal.kind})`);
+      }
+    }
+  }
+
+  lines.push("");
+  lines.push(`Sector: ${config.businessSector ?? "(not determined)"}`);
+  if (detection.sectorEvidence.length > 0) {
+    for (const evidence of detection.sectorEvidence) lines.push(`      - ${evidence}`);
+  }
+
+  lines.push("");
+  lines.push(`Jurisdictions applied: ${config.jurisdictions.join(", ") || "(none)"}`);
+  lines.push("");
+  for (const note of detection.notes) lines.push(`Note: ${note}`);
+  lines.push("");
+  return lines.join("\n");
 }
 
 program
@@ -91,49 +191,59 @@ program
       logger.info(`Report(s) written: ${written.join(", ")}`);
     }
 
-    const violationStatuses = new Set(["violation", "probable-violation", "risk", "missing-disclosure", "inconsistent"]);
-    const failOnSeverities = config.ci?.failOn ?? ["critical", "high"];
-    const warnOnSeverities = config.ci?.warnOn ?? [];
+    finishScan(report, config, options);
+  });
 
-    // With --baseline, the gate can be narrowed to findings this change
-    // introduced. Pre-existing findings still appear in every report; they
-    // are just not treated as this run's regression.
-    let gatedFindings = report.findings;
-    if (options.baseline) {
-      const baseline = readReport(resolve(options.baseline));
-      if (!baseline) {
-        process.exitCode = 2;
-        return;
-      }
-      const diff = diffReports(baseline, report);
-      console.log(renderDiffMarkdown(diff));
-      if (options.failOnNew) {
-        gatedFindings = diff.newFindings.map((entry) => entry.finding);
-        logger.info(`--fail-on-new: gating on ${gatedFindings.length} new finding(s) only.`);
-      }
-    } else if (options.failOnNew) {
-      logger.warn("--fail-on-new has no effect without --baseline; gating on all findings.");
+program
+  .command("autoscan")
+  .description(
+    "Detect which markets a site serves, then scan against them. Inferred scope is reported with its evidence, never applied silently."
+  )
+  .option("--url <url>", "URL of the live website to scan")
+  .option("--config <path>", "Path to a UniVerscan config file (JSON or YAML)")
+  .option("--jurisdictions <list>", "Override detection with an explicit list; detection still runs and is reported")
+  .option("--sector <sector>", "Override the detected business sector")
+  .option("--packs <list>", "Comma-separated regulatory pack ids to restrict the scan to")
+  .option("--accessibility-standard <standard>", "wcag2a | wcag2aa | wcag21aa | wcag22aa | wcag22aaa")
+  .option("--format <list>", "Comma-separated report formats: json,html,console,junit,sarif,markdown,csv")
+  .option("--out <dir>", "Output directory for reports", "./universcan-report")
+  .option("--detect-only", "Print the detected scope and exit without scanning", false)
+  .option("--fail-on <list>", "Comma-separated severities that cause a non-zero exit code")
+  .option("--baseline <path>", "Path to a previous report.json; prints what changed since that scan")
+  .option("--fail-on-new", "Only fail on findings that are new relative to --baseline", false)
+  .action(async (options) => {
+    const config = options.config ? loadConfig(resolve(options.config)) : loadConfigFromObject({});
+    if (options.url) config.target.url = options.url;
+    const jurisdictions = splitList(options.jurisdictions);
+    if (jurisdictions) config.jurisdictions = jurisdictions;
+    const packs = splitList(options.packs);
+    if (packs) config.regulatoryPacks = packs;
+    if (options.sector) config.businessSector = options.sector;
+    if (options.accessibilityStandard) config.accessibility.standard = options.accessibilityStandard;
+    const formats = splitList(options.format);
+    if (formats) config.reporting.formats = formats as UniVerscanConfig["reporting"]["formats"];
+    if (options.out) config.reporting.outputDir = resolve(options.out);
+    const failOn = splitList(options.failOn) as Severity[] | undefined;
+    if (failOn) config.ci = { ...config.ci, failOn, warnOn: config.ci?.warnOn ?? [] };
+
+    if (!config.target.url) {
+      logger.error("autoscan needs --url: a repository exposes no market signals to probe.");
+      process.exitCode = 2;
+      return;
     }
 
-    const blockingCount = gatedFindings.filter(
-      (f) => violationStatuses.has(f.status) && failOnSeverities.includes(f.severity)
-    ).length;
-    const warningCount = gatedFindings.filter(
-      (f) => violationStatuses.has(f.status) && warnOnSeverities.includes(f.severity)
-    ).length;
+    // Detection is run here rather than via ScanEngine.runAuto() so the
+    // inferred scope is printed before the scan starts, not buried under the
+    // console report. The report is annotated identically either way.
+    const { detection, config: resolved } = await detectScope(config);
+    console.log(renderScopeDetection(detection, resolved));
+    if (options.detectOnly) return;
 
-    if (report.coverage.rulesNotEvaluated > 0) {
-      logger.warn(
-        `${report.coverage.rulesNotEvaluated} rule(s) could not be evaluated in this scan. They are reported as 'not-evaluated', not as passes.`
-      );
-    }
-    if (warningCount > 0) {
-      logger.warn(`Scan found ${warningCount} finding(s) at the configured warn-on severities: ${warnOnSeverities.join(", ")}`);
-    }
-    if (blockingCount > 0) {
-      logger.error(`Scan found ${blockingCount} finding(s) at or above the configured fail-on severities: ${failOnSeverities.join(", ")}`);
-      process.exitCode = 1;
-    }
+    const report = await new ScanEngine().run(resolved);
+    report.meta.scopeDetection = detection;
+    const written = writeReports(report, resolved);
+    if (written.length > 0) logger.info(`Report(s) written: ${written.join(", ")}`);
+    finishScan(report, resolved, options);
   });
 
 program

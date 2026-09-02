@@ -33,6 +33,29 @@ applies.** Select jurisdictions based on where customers are, where the
 company is, and what the application does - not on every pack this
 repository happens to ship.
 
+`universcan autoscan --url <url> --detect-only` proposes a scope from the
+live site and prints the evidence for each market. Use it as a **starting
+point that you then verify**, never as the answer:
+
+- What it produces is an inference from page markup, not a finding of which
+  law applies to the operator. Check its evidence against what you know from
+  the request and the repository before adopting it.
+- A market it did not detect was not scanned. That is an unknown, not a
+  market the site is compliant in - report it that way, and add the market
+  with `--jurisdictions` when you have reason to think it applies.
+- Markets it lists as "considered, but evidence too thin" are exactly the
+  ones to check by hand.
+- When it reports the scope inconclusive, do not invent one. Say the scope
+  could not be determined automatically and ask, or derive it from the
+  repository.
+- If the user has already told you the jurisdictions, pass them explicitly.
+  Autoscan will report its own inference alongside, which is a useful
+  cross-check, but the user's scope is the one that governs.
+
+When a report carries `meta.scopeDetection`, its jurisdictions were inferred.
+Say so when you summarize it, rather than presenting an inferred scope as an
+established one.
+
 ### Step 3 - Inspect the project and its technology
 
 Run `universcan packs` to see available regulatory packs. If scanning a
@@ -147,6 +170,9 @@ Agents using UniVerscan must never:
   documented exception.
 - Treat a page that could not be reached, or a rule that could not run, as
   passed. Both must be reported as `not-evaluated` / `manual-review`.
+- Present an autoscan-inferred scope as if it were an established one, or
+  treat a market autoscan did not detect as a market the site is compliant
+  in. An undetected market is an unscanned market.
 - Expose credentials. Authentication secrets come only from environment
   variables (`authentication.usernameEnvVar`/`passwordEnvVar`) and are never
   written into config files, findings, or reports.

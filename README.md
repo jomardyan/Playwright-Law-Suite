@@ -27,6 +27,7 @@ first scan to a CI gate.
   - [Step 5 - Fix something, then prove you fixed it](#step-5---fix-something-then-prove-you-fixed-it)
   - [Step 6 - Record a risk you cannot fix yet](#step-6---record-a-risk-you-cannot-fix-yet)
   - [Step 7 - Gate CI on regressions, not on the backlog](#step-7---gate-ci-on-regressions-not-on-the-backlog)
+  - [Autoscan: scanning without knowing the scope](#autoscan-scanning-without-knowing-the-scope)
   - [Scanning a repository instead of a URL](#scanning-a-repository-instead-of-a-url)
   - [Writing your own rule pack](#writing-your-own-rule-pack)
   - [Using the framework as a library](#using-the-framework-as-a-library)
@@ -82,14 +83,20 @@ and remediation guidance. Nothing is presented as a legal verdict.
 
 ## Operating modes
 
-1. **Live website mode** - input is a URL; Playwright drives a real browser
+1. **Autoscan mode** - input is a URL and nothing else. UniVerscan probes
+   the site first to work out which markets it serves and what kind of
+   service it is, selects the matching regulatory packs, and then runs a
+   normal live scan. The inferred scope is reported with the evidence behind
+   every market it selected, and every market it considered and rejected.
+   See [Autoscan](#autoscan-scanning-without-knowing-the-scope).
+2. **Live website mode** - input is a URL; Playwright drives a real browser
    against the rendered DOM, network traffic, cookies/storage, forms,
    consent flows, and linked privacy documents.
-2. **Source-code mode** - input is a repository. UniVerscan detects the
+3. **Source-code mode** - input is a repository. UniVerscan detects the
    framework, and - only when explicitly permitted via
    `source.allowInstall`/`allowBuild` - installs and starts it locally so
    the same live-mode pipeline can run against `localhost`.
-3. **Static analysis mode** - used when the app cannot be started. Regex-based
+4. **Static analysis mode** - used when the app cannot be started. Regex-based
    scanning over source files detects tracking scripts, cookie/storage
    writes, missing accessibility attributes, insecure resource references,
    and the presence/absence of a privacy policy reference. Every static
@@ -191,6 +198,11 @@ node dist/cli.js packs
 ```
 
 ### Step 2 - Run your first scan
+
+> Don't know which jurisdictions apply? Skip to
+> [Autoscan](#autoscan-scanning-without-knowing-the-scope) and let the tool
+> propose a scope, then come back here.
+
 
 Start broad, with a single pack, so the output stays readable:
 
@@ -404,6 +416,102 @@ against the default branch's last report. Nothing in it is
 GitHub-specific beyond those two upload steps - the same CLI runs unchanged
 under GitLab CI, Azure DevOps, or Jenkins.
 
+### Autoscan: scanning without knowing the scope
+
+Choosing jurisdictions is the hardest part of the first scan, and getting it
+wrong is quiet: name too few markets and the packs that mattered never run.
+Autoscan proposes the scope for you.
+
+```bash
+node dist/cli.js autoscan --url https://shop.example
+```
+
+It loads the homepage plus the usual legal and pricing paths, reads the
+market signals each one exposes, and prints what it concluded before it
+scans anything:
+
+```text
+Autoscan - detected scope
+=========================
+Markets selected for scanning:
+  European Union  [high confidence, score 17]
+      - an hreflang alternate for "de-DE"  (hreflang, https://shop.example/)
+      - <html lang="de-DE">  (html-lang, https://shop.example/)
+      - euro prices  (currency, https://shop.example/)
+      - an Impressum (German/Austrian disclosure duty)  (legal-document, https://shop.example/)
+      - GDPR named on the page  (regulation-mention, https://shop.example/privacy)
+  United Kingdom  [medium confidence, score 5]
+      - an hreflang alternate for "en-GB"  (hreflang, https://shop.example/)
+
+Sector: e-commerce
+      - cart and checkout controls
+
+Jurisdictions applied: European Union, United Kingdom
+
+Note: Scope was inferred from what the site exposes, not from any record of
+where the operator does business. Confirm it before relying on the result: a
+market that was not detected was not scanned, and an unscanned market is an
+unknown rather than a clean one.
+```
+
+Use `--detect-only` to see that block and stop, without scanning:
+
+```bash
+node dist/cli.js autoscan --url https://shop.example --detect-only
+```
+
+**What it reads.** Only what the page already exposes - no geolocation
+lookups and no third-party enrichment. Signals are weighted by how
+deliberate they are:
+
+| Signal | Weight | Why |
+| --- | ---: | --- |
+| `hreflang` alternate with a region | 5 | The site naming its own target markets. |
+| Jurisdiction-specific legal document | 4 | An Impressum or a "Do Not Sell" link is an act of compliance with one regime. |
+| Country-code TLD | 4 | A deliberate, paid-for choice. |
+| A regulation named outright | 3 | "GDPR", "LGPD", "CCPA" in the page or its policies. |
+| `<html lang>` with a region | 3 | `de-DE` names a market; `de` alone does not. |
+| Currency | 2 | Euro and pound map cleanly; a bare `$` is never mapped. |
+| Consent platform loaded | 2 | CMPs are deployed predominantly for EU/UK regimes. |
+| `<html lang>`, language only | 1 | A weak proxy - German is spoken in three markets. |
+
+Repeated signals of the same kind count once: three euro prices are one
+observation, not three. A market needs a score of **4** to be scanned
+against, so one declaration-grade signal is enough and two weak content
+signals are not.
+
+**Three properties worth knowing**, because they are what keep an inferred
+scope honest:
+
+1. **A near-miss market is reported, not dropped.** Anything scoring 2-3
+   appears under "considered, but evidence too thin to scan against", so you
+   can add it with `--jurisdictions` if it applies. It is never silently
+   discarded.
+2. **No signal means inconclusive, not clean.** If nothing clears the bar,
+   autoscan says so and runs only the jurisdiction-agnostic rules. It does
+   not invent a scope.
+3. **An explicit scope always wins.** Pass `--jurisdictions` or `--sector`
+   and detection still runs and is still reported, but your values are the
+   ones used. A stated scope is a decision someone made; an inferred one is
+   a guess.
+
+The inferred scope is written into `report.json` as `meta.scopeDetection`
+and rendered in the HTML, Markdown, and console reports, so a reader can
+always tell a scope someone chose from a scope the tool guessed.
+
+Once you are happy with what it found, freeze it into a config file and use
+`scan` from then on - a committed scope does not drift when the site's
+markup changes:
+
+```bash
+node dist/cli.js autoscan --url https://shop.example --detect-only
+# copy the detected jurisdictions into universcan.config.json, then:
+node dist/cli.js scan --config universcan.config.json
+```
+
+Autoscan needs a URL. A repository exposes no market signals to probe, so
+`--repo` is not accepted.
+
 ### Scanning a repository instead of a URL
 
 Source mode takes a repo path. By default it runs **static analysis only**,
@@ -539,6 +647,7 @@ comparison the `diff` command prints, as a structured object.
 
 | Command | Purpose |
 | --- | --- |
+| `autoscan` | Detect the target's markets and sector, then scan against them. |
 | `scan` | Scan a URL and/or a repository and write reports. |
 | `diff` | Compare two `report.json` files. |
 | `report` | Re-render an existing `report.json` (currently `markdown`). |
@@ -561,6 +670,9 @@ Key `scan` options:
 | `--baseline <path>` | Compare against a previous `report.json`. |
 | `--fail-on-new` | Gate only on findings absent from the baseline. |
 | `--fail-on <list>` | Severities that cause exit code 1. |
+
+`autoscan` accepts the same options plus `--detect-only` (print the inferred
+scope and exit without scanning). It requires `--url`.
 
 ## Configuration reference
 

@@ -78,6 +78,40 @@ export function writeHtmlReport(report: ScanReport, outputDir: string): string {
     </table>
   </section>`;
 
+  const detection = report.meta.scopeDetection;
+  const scopeSection = !detection
+    ? ""
+    : `<section>
+    <h2>Scope (inferred by autoscan)</h2>
+    <div class="disclaimer">
+      These jurisdictions were <strong>inferred from the site</strong>, not supplied by a person. A market that was
+      not detected was not scanned, and an unscanned market is an unknown rather than a clean one. Confirm the scope
+      below before relying on this report.
+    </div>
+    <table>
+      <thead><tr><th>Market</th><th>Status</th><th>Confidence</th><th>Evidence</th></tr></thead>
+      <tbody>
+        ${
+          [
+            ...detection.selected.map(
+              (market) =>
+                `<tr><td>${escapeHtml(market.jurisdiction)}</td><td>scanned</td><td>${escapeHtml(
+                  market.confidence
+                )}</td><td>${escapeHtml(market.evidence.map((s) => s.detail).join("; "))}</td></tr>`
+            ),
+            ...detection.considered.map(
+              (market) =>
+                `<tr><td>${escapeHtml(market.jurisdiction)}</td><td><strong>not scanned</strong></td><td>${escapeHtml(
+                  market.confidence
+                )}</td><td>${escapeHtml(market.evidence.map((s) => s.detail).join("; "))}</td></tr>`
+            ),
+          ].join("\n") || '<tr><td colspan="4">No target market could be determined from this site.</td></tr>'
+        }
+      </tbody>
+    </table>
+    <ul class="note">${detection.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>
+  </section>`;
+
   const thirdPartyRows = report.thirdPartyServices
     .map(
       (record) =>
@@ -126,6 +160,8 @@ export function writeHtmlReport(report: ScanReport, outputDir: string): string {
     Passing automated tests does not, by itself, establish legal compliance with any regulation. Items marked
     "manual review" require assessment by qualified legal, privacy, or accessibility professionals.
   </div>
+
+  ${scopeSection}
 
   <section>
     <h2>Coverage &amp; Risk Indicators</h2>

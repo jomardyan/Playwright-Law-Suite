@@ -11,6 +11,7 @@ import { SecurityHeaderScanner } from "../modules/security/SecurityHeaderScanner
 import { AiInteractionDetector } from "../modules/ai/AiInteractionDetector.js";
 import { ConsumerJourneyScanner } from "../modules/consumer/ConsumerJourneyScanner.js";
 import { applyExceptions } from "./ExceptionFilter.js";
+import { detectScope } from "./AutoScan.js";
 import { PackLoader } from "../packs/PackLoader.js";
 import { notEvaluatedFinding } from "../packs/helpers.js";
 import { detectFramework } from "../modules/source/FrameworkDetector.js";
@@ -334,6 +335,25 @@ export class ScanEngine {
     }
 
     if (stopFn) await stopFn();
+    return report;
+  }
+
+  /**
+   * Autoscan: work out which markets the target serves, then scan against
+   * them.
+   *
+   * The inferred scope is recorded on the report as `meta.scopeDetection`,
+   * with the evidence for every market it selected and every market it
+   * considered and rejected. A reader must be able to tell a scope someone
+   * decided from a scope the tool guessed, and to check the guess.
+   */
+  async runAuto(config: UniVerscanConfig): Promise<ScanReport> {
+    if (!config.target.url) {
+      throw new Error("autoscan requires a URL (config.target.url); source repositories expose no market signals to probe");
+    }
+    const { detection, config: resolved } = await detectScope(config);
+    const report = await this.run(resolved);
+    report.meta.scopeDetection = detection;
     return report;
   }
 

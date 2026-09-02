@@ -8,6 +8,7 @@ import type { ConsentFlowResult } from "../modules/cookies/CookieScanner.js";
 import type { SecurityHeaderReport } from "../modules/security/SecurityHeaderScanner.js";
 import type { AiInteractionReport } from "../modules/ai/AiInteractionDetector.js";
 import type { ConsumerJourneyReport } from "../modules/consumer/ConsumerJourneyScanner.js";
+import type { ScopeDetection } from "../modules/scope/resolveScope.js";
 
 /**
  * Severity reflects impact if the underlying issue is real.
@@ -238,6 +239,12 @@ export interface ScanReport {
     target: { url?: string; repoPath?: string };
     jurisdictions: string[];
     packs: Array<{ id: string; regulation: string; version: string }>;
+    /**
+     * Present only for an autoscan. Records that the jurisdictions above
+     * were inferred rather than supplied, together with the evidence for
+     * each one, so a reader can tell a declared scope from a guessed one.
+     */
+    scopeDetection?: ScopeDetection;
   };
   findings: Finding[];
   /** Findings withheld from `findings` by a documented exception in the config. */
