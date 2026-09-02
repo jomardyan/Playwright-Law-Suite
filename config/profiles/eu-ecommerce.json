@@ -1,0 +1,10 @@
+{
+  "extends": "global-baseline",
+  "jurisdictions": ["European Union"],
+  "businessSector": "e-commerce",
+  "customerMarkets": ["European Union"],
+  "regulatoryPacks": ["eu-gdpr-eprivacy", "wcag-accessibility"],
+  "crawl": {
+    "includedRoutes": ["^/$", "checkout", "cart", "account", "login", "register", "privacy", "cookie", "terms", "contact"]
+  }
+}

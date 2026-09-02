@@ -1,0 +1,25 @@
+{
+  "extends": "global-baseline",
+  "jurisdictions": [
+    "European Union",
+    "United Kingdom",
+    "Australia",
+    "United States - California",
+    "Brazil",
+    "Canada",
+    "Japan"
+  ],
+  "customerMarkets": [
+    "European Union",
+    "United Kingdom",
+    "Australia",
+    "United States - California",
+    "Brazil",
+    "Canada",
+    "Japan"
+  ],
+  "crawl": {
+    "depth": 3,
+    "pageLimit": 40
+  }
+}

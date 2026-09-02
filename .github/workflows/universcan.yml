@@ -1,0 +1,56 @@
+name: UniVerscan Compliance Scan
+
+# Example CI integration. Critical/high findings fail the build; manual
+# review items are surfaced as warnings via the JUnit "skipped" summary and
+# the uploaded HTML/JSON reports, but do not block the pipeline on their own.
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # weekly production monitoring scan
+  workflow_dispatch:
+
+jobs:
+  compliance-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Run UniVerscan against the staging deployment
+        run: |
+          node dist/cli.js scan \
+            --url "${{ vars.STAGING_URL }}" \
+            --config config/profiles/eu-ecommerce.json \
+            --format json,html,junit \
+            --out ./universcan-report \
+            --fail-on critical,high
+
+      - name: Upload compliance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: universcan-report
+          path: universcan-report/
+
+      - name: Publish JUnit summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: UniVerscan Findings
+          path: universcan-report/report.junit.xml
+          reporter: java-junit
+          fail-on-error: false

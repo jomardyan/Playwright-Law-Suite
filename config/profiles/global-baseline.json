@@ -1,0 +1,23 @@
+{
+  "accessibility": {
+    "standard": "wcag22aa",
+    "includeInteractionChecks": true
+  },
+  "crawl": {
+    "depth": 2,
+    "pageLimit": 25,
+    "respectRobotsTxt": true
+  },
+  "consent": {
+    "enabled": true,
+    "testWithdrawal": true
+  },
+  "reporting": {
+    "formats": ["json", "html", "console"],
+    "outputDir": "./universcan-report"
+  },
+  "ci": {
+    "failOn": ["critical", "high"],
+    "warnOn": ["medium", "manual-review"]
+  }
+}
