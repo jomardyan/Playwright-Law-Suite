@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CURRENCY_MARKETS, REGULATION_MENTIONS } from "../src/modules/scope/signals.js";
 import { ccTldOf, parseLanguageTag, type ScopeProbe } from "../src/modules/scope/ScopeDetector.js";
 import {
   CANDIDATE_THRESHOLD,
@@ -282,5 +283,39 @@ describe("detected jurisdictions load the packs they name", () => {
       loadConfigFromObject({ jurisdictions: [CANONICAL_JURISDICTIONS.US_CA] })
     );
     expect(california.map((p) => p.id)).not.toContain("ca-pipeda");
+  });
+});
+
+describe("scope signal precision", () => {
+  const matches = (patterns: Array<{ pattern: RegExp; jurisdiction: string; label: string }>, text: string) =>
+    patterns.filter((entry) => entry.pattern.test(text)).map((entry) => entry.jurisdiction);
+
+  it("does not read a favicon link as a mention of the UK regulator", () => {
+    // `\bICO\b` case-insensitively matched the "ico" in `favicon.ico`, which
+    // put the United Kingdom in scope for essentially every site scanned.
+    const markup = '<link rel="icon" href="/static/favicon.ico"> <a href="/assets/logo.ico">Logo</a>';
+    expect(matches(REGULATION_MENTIONS, markup)).not.toContain("United Kingdom");
+  });
+
+  it("still reads a genuine mention of the ICO", () => {
+    expect(matches(REGULATION_MENTIONS, "You may complain to the ICO.")).toContain("United Kingdom");
+    expect(matches(REGULATION_MENTIONS, "Registered with the Information Commissioner's Office.")).toContain(
+      "United Kingdom"
+    );
+  });
+
+  it("reports the ¥ sign for both markets that use it rather than guessing one", () => {
+    const both = matches(CURRENCY_MARKETS, "Price: ¥1,200");
+    expect(both).toContain("Japan");
+    expect(both).toContain("China");
+  });
+
+  it("does not read a product code as a rand price", () => {
+    expect(matches(CURRENCY_MARKETS, "Model R2 and part R7 are in stock.")).not.toContain("South Africa");
+  });
+
+  it("still reads a genuine rand price", () => {
+    expect(matches(CURRENCY_MARKETS, "Only R199 including delivery")).toContain("South Africa");
+    expect(matches(CURRENCY_MARKETS, "Total: ZAR 1499")).toContain("South Africa");
   });
 });

@@ -268,13 +268,20 @@ export const CURRENCY_MARKETS: Array<{ pattern: RegExp; jurisdiction: CanonicalJ
   { pattern: /\bCAD\b|\bC\$/, jurisdiction: CANONICAL_JURISDICTIONS.CA, label: "Canadian dollar prices" },
   { pattern: /R\$|\bBRL\b/, jurisdiction: CANONICAL_JURISDICTIONS.BR, label: "Brazilian real prices" },
   { pattern: /₹|\bINR\b/, jurisdiction: CANONICAL_JURISDICTIONS.IN, label: "Indian rupee prices" },
-  { pattern: /¥|\bJPY\b|円/, jurisdiction: CANONICAL_JURISDICTIONS.JP, label: "Japanese yen prices" },
+  { pattern: /\bJPY\b|円/, jurisdiction: CANONICAL_JURISDICTIONS.JP, label: "Japanese yen prices" },
   { pattern: /\bCNY\b|\bRMB\b|元(?!素)/, jurisdiction: CANONICAL_JURISDICTIONS.CN, label: "Chinese yuan prices" },
+  // The yen sign is also the yuan sign. Rather than picking one and being
+  // confidently wrong half the time, it is reported for both markets, and
+  // says so - a reviewer can then look at the page.
+  { pattern: /[¥￥]/, jurisdiction: CANONICAL_JURISDICTIONS.JP, label: "the ¥ sign, which denotes either yen or yuan" },
+  { pattern: /[¥￥]/, jurisdiction: CANONICAL_JURISDICTIONS.CN, label: "the ¥ sign, which denotes either yen or yuan" },
   { pattern: /₩|\bKRW\b|원/, jurisdiction: CANONICAL_JURISDICTIONS.KR, label: "Korean won prices" },
   { pattern: /\bCHF\b|\bFr\.\s?\d/, jurisdiction: CANONICAL_JURISDICTIONS.CH, label: "Swiss franc prices" },
   { pattern: /฿|\bTHB\b/, jurisdiction: CANONICAL_JURISDICTIONS.TH, label: "Thai baht prices" },
   { pattern: /\bSGD\b|\bS\$/, jurisdiction: CANONICAL_JURISDICTIONS.SG, label: "Singapore dollar prices" },
-  { pattern: /\bZAR\b|\bR\d/, jurisdiction: CANONICAL_JURISDICTIONS.ZA, label: "South African rand prices" },
+  // `\bR\d` matched "R2" in any product code or room number. A rand price is
+  // an R followed by a real amount and nothing alphanumeric after it.
+  { pattern: /\bZAR\b|(^|[\s>(])R\s?\d{2,}(?:[.,]\d{2})?(?![\w])/m, jurisdiction: CANONICAL_JURISDICTIONS.ZA, label: "South African rand prices" },
   { pattern: /\bSAR\b|﷼/, jurisdiction: CANONICAL_JURISDICTIONS.SA, label: "Saudi riyal prices" },
   { pattern: /₦|\bNGN\b/, jurisdiction: CANONICAL_JURISDICTIONS.NG, label: "Nigerian naira prices" },
 ];
@@ -299,7 +306,12 @@ export const LEGAL_DOCUMENT_MARKETS: Array<{
 /** Explicit mentions of a regulation by name in the page or its legal documents. */
 export const REGULATION_MENTIONS: Array<{ pattern: RegExp; jurisdiction: CanonicalJurisdiction; label: string }> = [
   { pattern: /\bGDPR\b|General Data Protection Regulation|\bDSGVO\b|\bRGPD\b/i, jurisdiction: CANONICAL_JURISDICTIONS.EU, label: "GDPR" },
-  { pattern: /\bUK GDPR\b|\bPECR\b|Information Commissioner|\bICO\b/i, jurisdiction: CANONICAL_JURISDICTIONS.UK, label: "UK GDPR / PECR / the ICO" },
+  { pattern: /\bUK GDPR\b|\bPECR\b|Information Commissioner/i, jurisdiction: CANONICAL_JURISDICTIONS.UK, label: "UK GDPR / PECR / the Information Commissioner" },
+  // Case-sensitive, and guarded against a preceding dot or slash: the
+  // case-insensitive `\bICO\b` matched the "ico" in every `favicon.ico`
+  // link on the web, which put the United Kingdom in scope for essentially
+  // every site scanned.
+  { pattern: /(?<![./\w])ICO(?!\w)/, jurisdiction: CANONICAL_JURISDICTIONS.UK, label: "the ICO named on the page" },
   { pattern: /\bCCPA\b|\bCPRA\b/i, jurisdiction: CANONICAL_JURISDICTIONS.US_CA, label: "CCPA/CPRA" },
   { pattern: /\bLGPD\b|Lei Geral de Prote/i, jurisdiction: CANONICAL_JURISDICTIONS.BR, label: "LGPD" },
   { pattern: /\bPIPEDA\b|Personal Information Protection and Electronic Documents/i, jurisdiction: CANONICAL_JURISDICTIONS.CA, label: "PIPEDA" },

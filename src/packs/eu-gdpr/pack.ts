@@ -159,7 +159,8 @@ const privacyPolicyPresent = defineRule({
           buildFinding(privacyPolicyPresent, PACK_ID, REGULATION, JURISDICTION, {
             status: "missing-disclosure",
             affectedUrl: page.url,
-            observedBehavior: "No link matching 'Privacy Policy'/'Privacy Notice' was found on this page.",
+            observedBehavior:
+              "No link to a privacy notice was found on this page. Link text and href were both matched, in every language this scanner covers.",
             expectedBehavior: "A privacy policy link is discoverable from every page, typically in the footer.",
           })
         );
@@ -185,15 +186,31 @@ const privacyPolicyDisclosures = defineRule({
       if (!doc?.url || seenPages.has(doc.url)) continue;
       seenPages.add(doc.url);
       const missing = doc.disclosures.filter((d) => d.status === "missing");
-      if (missing.length > 0) {
+      // A topic matched only by wording that is often incidental - "third
+      // parties", a bare email address - is neither addressed nor absent.
+      // Listing it separately is the difference between telling a reviewer
+      // where to look and telling them something that is not true.
+      const weak = doc.disclosures.filter((d) => d.status === "potentially-incomplete");
+      if (missing.length > 0 || weak.length > 0) {
+        const parts: string[] = [];
+        if (missing.length > 0) {
+          parts.push(`No language covering these topics was found: ${missing.map((m) => m.category).join(", ")}.`);
+        }
+        if (weak.length > 0) {
+          parts.push(
+            `Wording that may or may not address these was found, and needs reading in context: ${weak
+              .map((m) => m.category)
+              .join(", ")}.`
+          );
+        }
         findings.push(
           buildFinding(privacyPolicyDisclosures, PACK_ID, REGULATION, JURISDICTION, {
             status: "inconsistent",
             affectedUrl: doc.url,
-            observedBehavior: `Keyword scan did not find expected language for: ${missing.map((m) => m.category).join(", ")}.`,
+            observedBehavior: parts.join(" "),
             expectedBehavior: "All GDPR Art. 13/14 disclosure categories are addressed in the privacy policy.",
             manualReviewRequired: true,
-            evidence: [context.evidence.note("Disclosure keyword scan", { textLength: doc.textLength, missing })],
+            evidence: [context.evidence.note("Disclosure keyword scan", { textLength: doc.textLength, missing, weak })],
           })
         );
       }

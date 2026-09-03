@@ -124,6 +124,21 @@ Comparing these states is what turns "a tracker fired" into evidence about
 Disabling the GPC probe (`consent.probeGlobalPrivacyControl: false`) makes
 the universal-opt-out rules report `not-evaluated`; it never makes them pass.
 
+Each state records outbound requests **and** what was written to the device:
+cookies, `localStorage` and `sessionStorage`. Both halves matter, because a
+site running analytics through a server-side tag writes `_ga` and `_fbp`
+without ever making a request to a tracker's domain - and Art. 5(3) ePrivacy
+governs the storing of information on the terminal equipment, not who the
+request went to. The visitor's own consent record is deliberately excluded:
+that cookie exists because the site implemented consent.
+
+Consent controls are looked for across every frame of the page, not only the
+main document, because most consent platforms render their banner in an
+iframe. Whether banner markup was present at all is recorded separately from
+whether a control was identified in it, so "this site has no consent
+mechanism" and "this scanner could not read this banner" stay different
+findings.
+
 ## Accepted risks (`ignoredFindings`)
 
 A risk a human has explicitly accepted is recorded in the config, never by
@@ -970,10 +985,12 @@ country- or sector-specific files on top.
 | `regulatoryPacks` | Pin an explicit pack allowlist instead of letting applicability decide. |
 | `accessibility.standard` | `wcag2a` … `wcag22aaa`. |
 | `accessibility.includeInteractionChecks` | Run the keyboard/focus checks axe cannot do. |
-| `crawl.depth`, `crawl.pageLimit` | Crawl bounds. |
+| `crawl.depth`, `crawl.pageLimit` | Crawl bounds. `depth` is how many link levels the crawl follows past the entry page; `pageLimit` caps the total, keeping the highest-priority routes. |
 | `crawl.includedRoutes` / `excludedRoutes` | Regex filters on the path. |
 | `crawl.respectRobotsTxt` | Honour robots.txt (default `true`; see below). |
-| `consent.enabled`, `acceptSelectors`, `rejectSelectors`, `testWithdrawal` | Consent-banner simulation. |
+| `consent.enabled`, `acceptSelectors`, `rejectSelectors`, `testWithdrawal` | Consent-banner simulation. The shipped selector lists cover the major consent platforms and the wording they use in the languages the packs address; set your own only to add a control they miss. |
+| `consent.withdrawalSelectors` | How to reopen the consent choice after granting it (the "as easy to withdraw as to give" route). Defaults to the built-in list. |
+| `consent.settleMs` | How long to let a page settle before a consent state is captured (default `1500`). Raise it for a site whose banner is injected late. |
 | `consent.probeGlobalPrivacyControl` | Run the GPC visit (default `true`). |
 | `authentication` | `none`, `password`, `storage-state`, or `custom-script`. Credentials come from env vars only. |
 | `source.allowInstall` / `allowBuild` | Permit dependency install / app startup in source mode. |
@@ -1022,6 +1039,17 @@ picks up any `Sitemap:` declarations to widen discovery. Pages excluded this
 way are logged as **unscanned, not compliant** - they never silently count
 as passes. Set it to `false` only for a target you own or have written
 permission to scan in full.
+
+Discovery reads `/sitemap.xml` (following a `<sitemapindex>` into the
+sitemaps it points at), then crawls links from the entry page to
+`crawl.depth` levels. Routes are canonicalised before they are counted - the
+fragment is dropped and campaign parameters (`utm_*`, `gclid`, `fbclid`, ...)
+are stripped - so one page does not consume several slots in `pageLimit`.
+Non-page files (PDFs, images, archives, fonts) are excluded: handing one to
+the rule engine yields a document with no links, no forms and no banner,
+which reads as a failing page rather than as a file. If the entry URL
+redirects to another origin - `example.com` to `www.example.com` - that
+origin is added to the scan scope and the redirect is logged.
 
 ## For AI coding agents
 
