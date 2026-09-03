@@ -8,6 +8,7 @@ import type { ConsentFlowResult } from "../modules/cookies/CookieScanner.js";
 import type { SecurityHeaderReport } from "../modules/security/SecurityHeaderScanner.js";
 import type { AiInteractionReport } from "../modules/ai/AiInteractionDetector.js";
 import type { ConsumerJourneyReport } from "../modules/consumer/ConsumerJourneyScanner.js";
+import type { ScopeDetection } from "../modules/scope/resolveScope.js";
 
 /**
  * Severity reflects impact if the underlying issue is real.
@@ -169,6 +170,19 @@ export interface ScanContext {
   startedAt: string;
 }
 
+/**
+ * Progress sink the engine reports into during a scan. Declared here, not in
+ * the CLI, so the engine depends on the contract rather than on a terminal:
+ * a library consumer or a GUI can supply its own.
+ */
+export interface ScanProgress {
+  start(phase: string, total?: number): void;
+  step(label: string): void;
+  finish(summary?: string): void;
+  warn(message: string): void;
+  stop(): void;
+}
+
 export interface Rule {
   id: string;
   requirement: string;
@@ -205,13 +219,28 @@ export interface RegulatoryPack {
   rules: Rule[];
 }
 
+/**
+ * A route that was discovered but could not be scanned. Kept in the report
+ * rather than dropped: a page nobody could load is an unknown, and must not
+ * read as either a pass or a failure.
+ */
+export interface UnreachablePage {
+  url: string;
+  /** Navigation error, or the HTTP status that made the page unusable. */
+  reason: string;
+  httpStatus: number | null;
+}
+
 export interface CoverageSummary {
   jurisdictionsSelected: string[];
   packsLoaded: string[];
   rulesEvaluated: number;
   rulesSkippedNotApplicable: number;
   rulesNotEvaluated: number;
+  /** Pages that actually loaded and were handed to the rules. */
   pagesScanned: number;
+  /** Pages that were discovered but could not be loaded. Never counted as scanned. */
+  pagesUnreachable: number;
   manualReviewItems: number;
   /** Findings moved out of `findings` by an explicit, documented config exception. */
   findingsSuppressedByException: number;
@@ -238,10 +267,18 @@ export interface ScanReport {
     target: { url?: string; repoPath?: string };
     jurisdictions: string[];
     packs: Array<{ id: string; regulation: string; version: string }>;
+    /**
+     * Present only for an autoscan. Records that the jurisdictions above
+     * were inferred rather than supplied, together with the evidence for
+     * each one, so a reader can tell a declared scope from a guessed one.
+     */
+    scopeDetection?: ScopeDetection;
   };
   findings: Finding[];
   /** Findings withheld from `findings` by a documented exception in the config. */
   suppressedFindings: SuppressedFinding[];
+  /** Routes that could not be loaded, and why. */
+  unreachablePages: UnreachablePage[];
   thirdPartyServices: ThirdPartyServiceRecord[];
   coverage: CoverageSummary;
   riskIndicators: {

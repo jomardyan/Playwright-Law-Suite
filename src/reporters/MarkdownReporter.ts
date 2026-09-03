@@ -75,6 +75,41 @@ export function renderMarkdownReport(report: ScanReport): string {
   );
   lines.push("");
 
+  const detection = report.meta.scopeDetection;
+  if (detection) {
+    lines.push("## Scope (inferred by autoscan)");
+    lines.push("");
+    lines.push(
+      "> These jurisdictions were **inferred from the site**, not supplied. A market that was not detected was not scanned, and an unscanned market is an unknown rather than a clean one."
+    );
+    lines.push("");
+    if (detection.selected.length === 0) {
+      lines.push("No target market could be determined from this site.");
+      lines.push("");
+    } else {
+      lines.push("| Market | Confidence | Evidence |");
+      lines.push("| --- | --- | --- |");
+      for (const market of detection.selected) {
+        lines.push(
+          `| ${escapeCell(market.jurisdiction)} | ${market.confidence} | ${escapeCell(
+            market.evidence.map((s) => s.detail).join("; ")
+          )} |`
+        );
+      }
+      lines.push("");
+    }
+    if (detection.considered.length > 0) {
+      lines.push("Considered but not scanned (evidence too thin):");
+      lines.push("");
+      for (const market of detection.considered) {
+        lines.push(`- **${escapeCell(market.jurisdiction)}** - ${escapeCell(market.evidence.map((s) => s.detail).join("; "))}`);
+      }
+      lines.push("");
+    }
+    for (const note of detection.notes) lines.push(`- ${note}`);
+    lines.push("");
+  }
+
   lines.push("## Finding classes");
   lines.push("");
   lines.push("| Class | Count |");
@@ -97,6 +132,7 @@ export function renderMarkdownReport(report: ScanReport): string {
   lines.push(`| Rules evaluated | ${report.coverage.rulesEvaluated} |`);
   lines.push(`| Rules not applicable | ${report.coverage.rulesSkippedNotApplicable} |`);
   lines.push(`| Rules that could not run | ${report.coverage.rulesNotEvaluated} |`);
+  lines.push(`| Pages unreachable | ${report.coverage.pagesUnreachable ?? 0} |`);
   lines.push(`| Manual review items | ${report.coverage.manualReviewItems} |`);
   lines.push(`| Automated technical coverage | ${pct(report.riskIndicators.automatedTechnicalCoverage)} |`);
   lines.push(`| Unresolved compliance risk | ${pct(report.riskIndicators.unresolvedComplianceRisk)} |`);
@@ -134,6 +170,19 @@ export function renderMarkdownReport(report: ScanReport): string {
           truncate(entry.reason, 200)
         )} | ${escapeCell(entry.approvedBy ?? "-")} | ${escapeCell(entry.expires ?? "-")} |`
       );
+    }
+    lines.push("");
+  }
+
+  if ((report.unreachablePages ?? []).length > 0) {
+    lines.push(`## Pages that could not be loaded (${report.unreachablePages.length})`);
+    lines.push("");
+    lines.push("These pages were not scanned. Nothing has been established about them - they are unknown, not clean.");
+    lines.push("");
+    lines.push("| URL | Reason |");
+    lines.push("| --- | --- |");
+    for (const entry of report.unreachablePages) {
+      lines.push(`| ${escapeCell(truncate(entry.url, 100))} | ${escapeCell(entry.reason)} |`);
     }
     lines.push("");
   }

@@ -27,9 +27,12 @@ first scan to a CI gate.
   - [Step 5 - Fix something, then prove you fixed it](#step-5---fix-something-then-prove-you-fixed-it)
   - [Step 6 - Record a risk you cannot fix yet](#step-6---record-a-risk-you-cannot-fix-yet)
   - [Step 7 - Gate CI on regressions, not on the backlog](#step-7---gate-ci-on-regressions-not-on-the-backlog)
+  - [Autoscan: scanning without knowing the scope](#autoscan-scanning-without-knowing-the-scope)
   - [Scanning a repository instead of a URL](#scanning-a-repository-instead-of-a-url)
   - [Writing your own rule pack](#writing-your-own-rule-pack)
   - [Using the framework as a library](#using-the-framework-as-a-library)
+- [Interactive use](#interactive-use)
+  - [When something is wrong](#when-something-is-wrong)
 - [Command reference](#command-reference)
 - [Configuration reference](#configuration-reference)
 - [CI integration](#ci-integration)
@@ -82,14 +85,20 @@ and remediation guidance. Nothing is presented as a legal verdict.
 
 ## Operating modes
 
-1. **Live website mode** - input is a URL; Playwright drives a real browser
+1. **Autoscan mode** - input is a URL and nothing else. UniVerscan probes
+   the site first to work out which markets it serves and what kind of
+   service it is, selects the matching regulatory packs, and then runs a
+   normal live scan. The inferred scope is reported with the evidence behind
+   every market it selected, and every market it considered and rejected.
+   See [Autoscan](#autoscan-scanning-without-knowing-the-scope).
+2. **Live website mode** - input is a URL; Playwright drives a real browser
    against the rendered DOM, network traffic, cookies/storage, forms,
    consent flows, and linked privacy documents.
-2. **Source-code mode** - input is a repository. UniVerscan detects the
+3. **Source-code mode** - input is a repository. UniVerscan detects the
    framework, and - only when explicitly permitted via
    `source.allowInstall`/`allowBuild` - installs and starts it locally so
    the same live-mode pipeline can run against `localhost`.
-3. **Static analysis mode** - used when the app cannot be started. Regex-based
+4. **Static analysis mode** - used when the app cannot be started. Regex-based
    scanning over source files detects tracking scripts, cookie/storage
    writes, missing accessibility attributes, insecure resource references,
    and the presence/absence of a privacy policy reference. Every static
@@ -143,26 +152,47 @@ The engine enforces three properties that keep an exception honest:
 
 ## Included regulatory packs
 
-| Pack | Regulation | Jurisdiction | Applies from |
-| --- | --- | --- | --- |
-| `eu-gdpr-eprivacy` | GDPR / ePrivacy Directive | European Union | 2018-05-25 |
-| `eu-accessibility-act` | European Accessibility Act (Dir. (EU) 2019/882) / EN 301 549 | European Union | 2025-06-28 |
-| `eu-ai-act-transparency` | AI Act (Reg. (EU) 2024/1689) Art. 50 transparency | European Union | 2026-08-02 |
-| `eu-consumer-rights` | Consumer Rights Directive (incl. the Art. 11a withdrawal function) / UCPD / DSA Art. 25 | European Union | 2026-06-19 |
-| `wcag-accessibility` | WCAG 2.2 | Global | 2023-10-05 |
-| `global-data-security` | Security of processing (transport, headers, cookie attributes) | Global | 2018-05-25 |
-| `us-ca-ccpa-cpra` | CCPA / CPRA (+ COPPA hook) | United States - California | 2023-01-01 |
-| `us-state-privacy` | US state privacy laws - universal opt-out (GPC) handling | United States - multi-state | 2026-01-01 |
-| `uk-gdpr-pecr` | UK GDPR / PECR | United Kingdom | 2021-01-01 |
-| `au-privacy-dda` | Privacy Act / APPs / DDA | Australia | 2014-03-12 |
-| `br-lgpd` | LGPD | Brazil | 2020-09-18 |
-| `ca-pipeda` | PIPEDA | Canada | 2001-01-01 |
-| `jp-appi` | APPI | Japan | 2022-04-01 |
-| `in-dpdp` | DPDP Act 2023 + DPDP Rules 2025 | India | 2027-05-13 |
+| Pack | Regulation | Jurisdiction |
+| --- | --- | --- |
+| `eu-gdpr-eprivacy` | GDPR / ePrivacy Directive | European Union |
+| `eu-accessibility-act` | European Accessibility Act / EN 301 549 | European Union |
+| `eu-ai-act-transparency` | AI Act Art. 50 transparency | European Union |
+| `eu-consumer-rights` | Consumer Rights Directive / UCPD / DSA Art. 25 | European Union |
+| `uk-gdpr-pecr` | UK GDPR / PECR | United Kingdom |
+| `ch-fadp` | revised Federal Act on Data Protection | Switzerland |
+| `us-ca-ccpa-cpra` | CCPA / CPRA (+ COPPA hook) | United States - California |
+| `us-state-privacy` | State comprehensive privacy laws (universal opt-out) | United States - multi-state |
+| `us-ada-title-ii` | ADA Title II web rule (28 CFR Part 35, Subpart H) | United States - public entities |
+| `ca-pipeda` | PIPEDA | Canada |
+| `ca-qc-law25` | Quebec Law 25 | Canada - Quebec |
+| `br-lgpd` | LGPD | Brazil |
+| `au-privacy-dda` | Privacy Act / APPs / DDA | Australia |
+| `jp-appi` | APPI | Japan |
+| `kr-pipa` | PIPA | South Korea |
+| `cn-pipl` | PIPL | China |
+| `in-dpdp` | DPDP Act 2023 and Rules 2025 | India |
+| `sg-pdpa` | PDPA 2012 | Singapore |
+| `th-pdpa` | PDPA B.E. 2562 | Thailand |
+| `za-popia` | POPIA | South Africa |
+| `sa-pdpl` | PDPL | Saudi Arabia |
+| `ng-ndpa` | Nigeria Data Protection Act 2023 | Nigeria |
+| `wcag-accessibility` | WCAG 2.2 | Global |
+| `global-data-security` | Security of processing (cross-regime) | Global |
 
-The `Applies from` column is the date the pack's obligations bite, not the
-date the pack was written. A pack whose date is in the future still runs, so
-a team can see the work ahead of a deadline rather than after it.
+Packs are not interchangeable templates. Where a regime genuinely differs,
+the pack differs:
+
+- **Switzerland** uses the FDPIC's tiered cookie model - only advertising and
+  profiling cookies need opt-in, so `ch-fadp` does not report analytics the
+  way an EU pack would.
+- **Singapore** has no ePrivacy-style cookie rule, so `sg-pdpa` checks the
+  notification obligation rather than demanding a consent banner.
+- **Quebec** requires confidentiality *by default*, so `ca-qc-law25` treats
+  tracking that is live on arrival as a failure in itself.
+- **China** requires *separate* consent for several purposes, so a single
+  bundled "accept all" fails `cn-pipl` even where it would satisfy the GDPR.
+- **ADA Title II** adopts WCAG 2.1 AA specifically, so `us-ada-title-ii`
+  excludes 2.2-only criteria, and applies only to public-sector targets.
 
 This is an extensible starting library, not a claim that every law in every
 country is fully implemented - see `src/packs/helpers.ts` and `AGENTS.md`
@@ -190,7 +220,17 @@ obligations apply from:
 node dist/cli.js packs
 ```
 
+In a hurry? `node dist/cli.js init` walks you through the whole of Steps 2-4
+interactively - it probes the site, proposes a scope, shows which packs that
+scope loads, and writes the config file. See
+[Interactive use](#interactive-use).
+
 ### Step 2 - Run your first scan
+
+> Don't know which jurisdictions apply? Skip to
+> [Autoscan](#autoscan-scanning-without-knowing-the-scope) and let the tool
+> propose a scope, then come back here.
+
 
 Start broad, with a single pack, so the output stays readable:
 
@@ -394,8 +434,8 @@ node dist/cli.js scan \
   --fail-on critical,high
 ```
 
-Exit codes: `0` clean, `1` findings at or above `--fail-on`, `2` a usage or
-input error. With `--fail-on-new`, only findings absent from the baseline
+Exit codes: `0` clean, `1` findings at or above `--fail-on`, `2` the scan
+could not run (bad input, no packs selected, or nothing reachable). With `--fail-on-new`, only findings absent from the baseline
 count toward the gate; everything else still appears in every report.
 
 `.github/workflows/universcan.yml` wires this up: SARIF to code scanning,
@@ -403,6 +443,102 @@ the Markdown report into the job summary, and a pull-request job that diffs
 against the default branch's last report. Nothing in it is
 GitHub-specific beyond those two upload steps - the same CLI runs unchanged
 under GitLab CI, Azure DevOps, or Jenkins.
+
+### Autoscan: scanning without knowing the scope
+
+Choosing jurisdictions is the hardest part of the first scan, and getting it
+wrong is quiet: name too few markets and the packs that mattered never run.
+Autoscan proposes the scope for you.
+
+```bash
+node dist/cli.js autoscan --url https://shop.example
+```
+
+It loads the homepage plus the usual legal and pricing paths, reads the
+market signals each one exposes, and prints what it concluded before it
+scans anything:
+
+```text
+Autoscan - detected scope
+=========================
+Markets selected for scanning:
+  European Union  [high confidence, score 17]
+      - an hreflang alternate for "de-DE"  (hreflang, https://shop.example/)
+      - <html lang="de-DE">  (html-lang, https://shop.example/)
+      - euro prices  (currency, https://shop.example/)
+      - an Impressum (German/Austrian disclosure duty)  (legal-document, https://shop.example/)
+      - GDPR named on the page  (regulation-mention, https://shop.example/privacy)
+  United Kingdom  [medium confidence, score 5]
+      - an hreflang alternate for "en-GB"  (hreflang, https://shop.example/)
+
+Sector: e-commerce
+      - cart and checkout controls
+
+Jurisdictions applied: European Union, United Kingdom
+
+Note: Scope was inferred from what the site exposes, not from any record of
+where the operator does business. Confirm it before relying on the result: a
+market that was not detected was not scanned, and an unscanned market is an
+unknown rather than a clean one.
+```
+
+Use `--detect-only` to see that block and stop, without scanning:
+
+```bash
+node dist/cli.js autoscan --url https://shop.example --detect-only
+```
+
+**What it reads.** Only what the page already exposes - no geolocation
+lookups and no third-party enrichment. Signals are weighted by how
+deliberate they are:
+
+| Signal | Weight | Why |
+| --- | ---: | --- |
+| `hreflang` alternate with a region | 5 | The site naming its own target markets. |
+| Jurisdiction-specific legal document | 4 | An Impressum or a "Do Not Sell" link is an act of compliance with one regime. |
+| Country-code TLD | 4 | A deliberate, paid-for choice. |
+| A regulation named outright | 3 | "GDPR", "LGPD", "CCPA" in the page or its policies. |
+| `<html lang>` with a region | 3 | `de-DE` names a market; `de` alone does not. |
+| Currency | 2 | Euro and pound map cleanly; a bare `$` is never mapped. |
+| Consent platform loaded | 2 | CMPs are deployed predominantly for EU/UK regimes. |
+| `<html lang>`, language only | 1 | A weak proxy - German is spoken in three markets. |
+
+Repeated signals of the same kind count once: three euro prices are one
+observation, not three. A market needs a score of **4** to be scanned
+against, so one declaration-grade signal is enough and two weak content
+signals are not.
+
+**Three properties worth knowing**, because they are what keep an inferred
+scope honest:
+
+1. **A near-miss market is reported, not dropped.** Anything scoring 2-3
+   appears under "considered, but evidence too thin to scan against", so you
+   can add it with `--jurisdictions` if it applies. It is never silently
+   discarded.
+2. **No signal means inconclusive, not clean.** If nothing clears the bar,
+   autoscan says so and runs only the jurisdiction-agnostic rules. It does
+   not invent a scope.
+3. **An explicit scope always wins.** Pass `--jurisdictions` or `--sector`
+   and detection still runs and is still reported, but your values are the
+   ones used. A stated scope is a decision someone made; an inferred one is
+   a guess.
+
+The inferred scope is written into `report.json` as `meta.scopeDetection`
+and rendered in the HTML, Markdown, and console reports, so a reader can
+always tell a scope someone chose from a scope the tool guessed.
+
+Once you are happy with what it found, freeze it into a config file and use
+`scan` from then on - a committed scope does not drift when the site's
+markup changes:
+
+```bash
+node dist/cli.js autoscan --url https://shop.example --detect-only
+# copy the detected jurisdictions into universcan.config.json, then:
+node dist/cli.js scan --config universcan.config.json
+```
+
+Autoscan needs a URL. A repository exposes no market signals to probe, so
+`--repo` is not accepted.
 
 ### Scanning a repository instead of a URL
 
@@ -535,10 +671,142 @@ console.log(`${report.coverage.rulesNotEvaluated} rule(s) could not run - not pa
 already know the mode. `diffReports(baseline, current)` gives you the same
 comparison the `diff` command prints, as a structured object.
 
+## Interactive use
+
+The CLI is built for CI first, so every interactive affordance degrades
+rather than breaking. Colour, Unicode glyphs, spinners and prompts all
+switch off automatically when there is no terminal to render them, and the
+plain output is what a pipeline log actually wants.
+
+### `init` - set a project up
+
+```bash
+node dist/cli.js init
+```
+
+Asks what to scan, offers to probe the site for its target markets, lets you
+accept or correct the proposal, then shows exactly which packs the resulting
+scope loads **before** it writes anything:
+
+```text
+Proposed scope
+  ✓ European Union (high confidence)
+      • an hreflang alternate for "de-DE"
+      • euro prices
+      • and 3 more signal(s)
+  ✓ United Kingdom (medium confidence)
+      • an hreflang alternate for "en-GB"
+
+  This was inferred from the site, not from any record of where the business
+  operates. A market that was not detected was not scanned, and an unscanned
+  market is an unknown rather than a clean one.
+
+❯ Use these 2 market(s)? [Y/n]
+```
+
+Answer `n` and you get the full market list to pick from by hand. Scope is a
+decision about legal exposure, so the wizard always proposes and never
+decides.
+
+`--url` skips the first question, `--no-detect` goes straight to manual
+selection, and `--yes` accepts every default for scripted setup.
+
+### `explore` - browse a report
+
+```bash
+node dist/cli.js explore --input ./universcan-report/report.json
+```
+
+A scan of a real site produces more findings than fit on a screen. This
+pages through them and filters by status, severity or pack, searches free
+text, and opens any finding with its evidence, legal reference and
+remediation:
+
+```text
+─── 36 of 36 finding(s) ──────────────────────────────────────────────────
+  filters: none
+   #  SEVERITY  STATUS              RULE                         WHERE
+  ────────────────────────────────────────────────────────────────────────
+   1  critical  missing-disclosure  gdpr-privacy-policy-present  /
+   5  high      probable-violation  crd-withdrawal-function-...  /
+
+  showing 1-15 of 36   • [n]ext [p]rev [number] open
+                       • [s]tatus [v]severity [k]pack [/]search [c]lear  • [q]uit
+```
+
+Commands are a single key plus Enter, so it works over a slow SSH session
+and needs no raw-mode terminal handling.
+
+### Live progress
+
+`scan` and `autoscan` show a spinner with a page counter while they work,
+and a per-step line when there is no TTY. Progress is written to **stderr**,
+never stdout, so piping a report to a file or another process gives you the
+report and nothing else:
+
+```bash
+node dist/cli.js report --input report.json --format markdown > summary.md   # clean
+```
+
+`--quiet` suppresses progress entirely.
+
+### When something is wrong
+
+Failures name the problem and the fix, rather than a stack trace:
+
+```text
+x No regulatory pack is called 'eu-gdpr'.
+  Did you mean 'eu-gdpr-eprivacy'? Run 'universcan packs' for the full list.
+
+! 'Germany' matched no jurisdiction-specific pack, so no rules for that market will run.
+  Use 'European Union' instead - that is the pack covering Germany.
+```
+
+These checks run **before** the browser launches, so a selection that would
+scan nothing fails in a second rather than after a full crawl. That matters
+more than it sounds: a mistyped pack id used to load no rules at all, find
+nothing, and exit zero - a clean bill of health for a check that never ran.
+
+Two things the CLI now refuses to let pass quietly:
+
+- **A page that could not be loaded is never scanned.** Handing a blank
+  error document to the rules manufactured confirmed violations out of
+  nothing ("no privacy policy link found" on a page that does not exist).
+  Unreachable routes are listed in their own report section, counted in
+  `coverage.pagesUnreachable`, and the rules that needed them report
+  `not-evaluated`.
+- **A scan that reached nothing exits 2, not 0.** An unreachable staging
+  host must not read as a green build.
+
+Set `UNIVERSCAN_DEBUG=1` for the full stack trace behind any message.
+
+### Controlling the output
+
+| Setting | Effect |
+| --- | --- |
+| `--no-color` | Plain text, even on a terminal. |
+| `NO_COLOR=1` | Same, via the [no-color.org](https://no-color.org) convention. |
+| `FORCE_COLOR=1` | Keep colour when piping, for a log viewer that renders it. |
+| `TERM=dumb` | Disables colour, Unicode and prompts. |
+| `CI` set | Never interactive, whatever else is true. |
+| `--quiet` | No progress output. |
+| `packs --plain` | Tab-separated pack list for scripting. |
+| `UNIVERSCAN_DEBUG=1` | Full stack traces instead of summarised errors. |
+
+Width is read from the terminal and clamped to a sane range, so tables and
+wrapped text fit an 80-column window and a 200-column one alike.
+
+Anything that needs a person degrades with an explanation rather than
+hanging: `init` and `explore` exit with code 2 and point at the
+non-interactive alternative when stdin is not a terminal.
+
 ## Command reference
 
 | Command | Purpose |
 | --- | --- |
+| `init` | Interactive setup: proposes a scope, then writes a config file. |
+| `explore` | Browse a report interactively: page, filter, search, open a finding. |
+| `autoscan` | Detect the target's markets and sector, then scan against them. |
 | `scan` | Scan a URL and/or a repository and write reports. |
 | `diff` | Compare two `report.json` files. |
 | `report` | Re-render an existing `report.json` (currently `markdown`). |
@@ -561,6 +829,16 @@ Key `scan` options:
 | `--baseline <path>` | Compare against a previous `report.json`. |
 | `--fail-on-new` | Gate only on findings absent from the baseline. |
 | `--fail-on <list>` | Severities that cause exit code 1. |
+
+`autoscan` accepts the same options plus `--detect-only` (print the inferred
+scope and exit without scanning). It requires `--url`.
+
+Global options, valid on every command:
+
+| Option | Purpose |
+| --- | --- |
+| `--no-color` | Disable coloured output. |
+| `--quiet` | Suppress live progress. |
 
 ## Configuration reference
 
@@ -603,6 +881,7 @@ Bundled profiles:
 | `eu-ecommerce` | GDPR/ePrivacy focused EU e-commerce scan. |
 | `us-multistate-privacy` | CCPA/CPRA plus the multi-state universal opt-out (GPC) pack. |
 | `us-ca-consumer` | California-only consumer scan. |
+| `apac-privacy` | China, South Korea, Japan, Singapore, Thailand, India and Australia. |
 | `global-multi-market` | Every jurisdiction pack, for a service sold worldwide. |
 
 ## CI integration

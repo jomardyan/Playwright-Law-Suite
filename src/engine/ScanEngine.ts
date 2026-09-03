@@ -11,6 +11,7 @@ import { SecurityHeaderScanner } from "../modules/security/SecurityHeaderScanner
 import { AiInteractionDetector } from "../modules/ai/AiInteractionDetector.js";
 import { ConsumerJourneyScanner } from "../modules/consumer/ConsumerJourneyScanner.js";
 import { applyExceptions } from "./ExceptionFilter.js";
+import { detectScope } from "./AutoScan.js";
 import { PackLoader } from "../packs/PackLoader.js";
 import { notEvaluatedFinding } from "../packs/helpers.js";
 import { detectFramework } from "../modules/source/FrameworkDetector.js";
@@ -18,6 +19,8 @@ import { startApplication } from "../modules/source/AppRunner.js";
 import { runStaticAnalysis } from "../modules/source/StaticAnalyzer.js";
 import { logger } from "../utils/logger.js";
 import type {
+  ScanProgress,
+  UnreachablePage,
   CoverageSummary,
   Finding,
   PageContext,
@@ -44,15 +47,33 @@ function computeRiskIndicators(findings: Finding[], coverage: CoverageSummary, c
   };
 }
 
+/** No-op progress sink, used when the caller supplies none. */
+const NO_PROGRESS: ScanProgress = {
+  start: () => undefined,
+  step: () => undefined,
+  finish: () => undefined,
+  warn: () => undefined,
+  stop: () => undefined,
+};
+
 export class ScanEngine {
   private readonly packLoader = new PackLoader();
+  private readonly progress: ScanProgress;
+
+  /**
+   * @param progress optional sink for live progress. Defaults to a no-op, so
+   * a library consumer that does not care about progress sees no change.
+   */
+  constructor(progress: ScanProgress = NO_PROGRESS) {
+    this.progress = progress;
+  }
 
   /** Runs every applicable rule from every loaded pack against a built ScanContext. */
   private async evaluateRules(
     scanContext: ScanContext
   ): Promise<{
     findings: Finding[];
-    coverage: Omit<CoverageSummary, "pagesScanned" | "manualReviewItems" | "findingsSuppressedByException">;
+    coverage: Omit<CoverageSummary, "pagesScanned" | "pagesUnreachable" | "manualReviewItems" | "findingsSuppressedByException">;
     packs: Array<{ id: string; regulation: string; version: string }>;
   }> {
     const packs = await this.packLoader.load(scanContext.config);
@@ -113,6 +134,7 @@ export class ScanEngine {
     target: ScanReport["meta"]["target"],
     findings: Finding[],
     suppressedFindings: SuppressedFinding[],
+    unreachablePages: UnreachablePage[],
     thirdPartyServices: ThirdPartyServiceRecord[],
     coverage: CoverageSummary,
     packIds: Array<{ id: string; regulation: string; version: string }>
@@ -128,6 +150,7 @@ export class ScanEngine {
       },
       findings,
       suppressedFindings,
+      unreachablePages,
       thirdPartyServices,
       coverage,
       riskIndicators: computeRiskIndicators(findings, coverage, config),
@@ -144,8 +167,10 @@ export class ScanEngine {
     const authContext = await browserManager.newAuthenticatedContext(config.authentication);
     const page = await authContext.newPage();
     const discovery = new SiteDiscovery();
+    this.progress.start("Discovering routes");
     const routes = await discovery.discover(config.target.url, page, config);
-    logger.info(`Discovered ${routes.length} route(s) to scan`);
+    this.progress.finish(`${routes.length} route(s) to scan`);
+    logger.debug(`Discovered ${routes.length} route(s) to scan`);
 
     const accessibilityScanner = new AccessibilityScanner();
     const formsScanner = new FormsScanner();
@@ -161,16 +186,39 @@ export class ScanEngine {
     aiDetector.watch(page);
 
     const pages: PageContext[] = [];
+    const unreachable: UnreachablePage[] = [];
     let thirdPartyServices: ThirdPartyServiceRecord[] = [];
 
+    this.progress.start("Scanning pages", routes.length);
     for (const [index, route] of routes.entries()) {
-      logger.info(`Scanning ${route.url}`);
+      this.progress.step(route.url);
+      logger.debug(`Scanning ${route.url}`);
+      let navigationError: string | null = null;
       const response = await page
         .goto(route.url, { waitUntil: "domcontentloaded", timeout: 30_000 })
         .catch((error) => {
-          logger.warn(`Failed to navigate to ${route.url}`, error);
+          navigationError = (error as Error).message.split("\n")[0];
+          this.progress.warn(`Could not load ${route.url}: ${navigationError}`);
+          logger.debug(`Failed to navigate to ${route.url}`, error);
           return null;
         });
+
+      // A page that never loaded, or that answered with an error status, has
+      // no content for a rule to reason about. Handing it to the rules would
+      // manufacture findings out of a blank document - "no privacy policy
+      // link found" on a page that does not exist. It is recorded as
+      // unreachable and excluded, so the rules that needed it report
+      // `not-evaluated` instead of inventing a violation.
+      const httpStatus = response?.status() ?? null;
+      if (!response || navigationError !== null || (httpStatus !== null && httpStatus >= 400)) {
+        const reason =
+          navigationError ?? (httpStatus !== null ? `HTTP ${httpStatus}` : "no response was received");
+        unreachable.push({ url: route.url, reason, httpStatus });
+        if (navigationError === null) {
+          this.progress.warn(`Skipping ${route.url}: ${reason}`);
+        }
+        continue;
+      }
 
       const securityHeaders = await securityScanner.collect(page, response).catch((error) => {
         logger.warn(`Security header collection failed for ${route.url}`, error);
@@ -223,6 +271,17 @@ export class ScanEngine {
       });
     }
 
+    this.progress.finish(
+      unreachable.length > 0
+        ? `${pages.length} page(s) scanned, ${unreachable.length} unreachable`
+        : `${pages.length} page(s) scanned`
+    );
+    if (pages.length === 0 && routes.length > 0) {
+      logger.warn(
+        `None of the ${routes.length} discovered route(s) could be loaded. Every browser-dependent rule will report 'not-evaluated'; nothing about this target has been established.`
+      );
+    }
+
     const scanContext: ScanContext = {
       config,
       mode: "live",
@@ -232,11 +291,14 @@ export class ScanEngine {
       startedAt: new Date().toISOString(),
     };
 
+    this.progress.start("Evaluating rules");
     const { findings: rawFindings, coverage: partialCoverage, packs: packIds } = await this.evaluateRules(scanContext);
+    this.progress.finish(`${partialCoverage.rulesEvaluated} rule(s) evaluated across ${packIds.length} pack(s)`);
     const { findings, suppressed } = applyExceptions(rawFindings, config);
     const coverage: CoverageSummary = {
       ...partialCoverage,
       pagesScanned: pages.length,
+      pagesUnreachable: unreachable.length,
       manualReviewItems: findings.filter((f) => f.manualReviewRequired).length,
       findingsSuppressedByException: suppressed.length,
     };
@@ -250,6 +312,7 @@ export class ScanEngine {
       { url: config.target.url },
       findings,
       suppressed,
+      unreachable,
       thirdPartyServices,
       coverage,
       packIds
@@ -327,13 +390,33 @@ export class ScanEngine {
       const coverage: CoverageSummary = {
         ...partialCoverage,
         pagesScanned: 0,
+        pagesUnreachable: 0,
         manualReviewItems: findings.filter((f) => f.manualReviewRequired).length,
         findingsSuppressedByException: suppressed.length,
       };
-      report = this.buildReport(config, "source", { repoPath }, findings, suppressed, [], coverage, packIds);
+      report = this.buildReport(config, "source", { repoPath }, findings, suppressed, [], [], coverage, packIds);
     }
 
     if (stopFn) await stopFn();
+    return report;
+  }
+
+  /**
+   * Autoscan: work out which markets the target serves, then scan against
+   * them.
+   *
+   * The inferred scope is recorded on the report as `meta.scopeDetection`,
+   * with the evidence for every market it selected and every market it
+   * considered and rejected. A reader must be able to tell a scope someone
+   * decided from a scope the tool guessed, and to check the guess.
+   */
+  async runAuto(config: UniVerscanConfig): Promise<ScanReport> {
+    if (!config.target.url) {
+      throw new Error("autoscan requires a URL (config.target.url); source repositories expose no market signals to probe");
+    }
+    const { detection, config: resolved } = await detectScope(config);
+    const report = await this.run(resolved);
+    report.meta.scopeDetection = detection;
     return report;
   }
 
