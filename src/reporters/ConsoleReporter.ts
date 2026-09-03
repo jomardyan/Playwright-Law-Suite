@@ -64,8 +64,15 @@ export function renderConsoleReport(report: ScanReport, capabilities: TerminalCa
   // --- Coverage ---
   lines.push("");
   lines.push(styler.bold("  Coverage"));
+  const unreachableCount = report.coverage.pagesUnreachable ?? 0;
   const coverageRows: string[][] = [
     ["Pages scanned", String(report.coverage.pagesScanned)],
+    [
+      "Pages unreachable",
+      unreachableCount > 0
+        ? styler.yellow(`${unreachableCount}  ${symbols.warning} not scanned, so unknown`)
+        : "0",
+    ],
     ["Rules evaluated", String(report.coverage.rulesEvaluated)],
     ["Rules not applicable", String(report.coverage.rulesSkippedNotApplicable)],
     [
@@ -137,6 +144,19 @@ export function renderConsoleReport(report: ScanReport, capabilities: TerminalCa
     if (items.length > MAX_PER_SEVERITY) {
       lines.push(styler.dim(`    ... and ${items.length - MAX_PER_SEVERITY} more (see the JSON report, or 'universcan explore')`));
     }
+  }
+
+  // --- Unreachable pages ---
+  if ((report.unreachablePages ?? []).length > 0) {
+    lines.push("");
+    lines.push(`${styler.bold("  Pages that could not be loaded")} ${styler.dim(`(${report.unreachablePages.length})`)}`);
+    for (const entry of report.unreachablePages.slice(0, 15)) {
+      lines.push(`    ${styler.yellow(symbols.warning)} ${truncate(entry.url, Math.max(20, capabilities.width - 40))} ${styler.dim(`- ${entry.reason}`)}`);
+    }
+    if (report.unreachablePages.length > 15) {
+      lines.push(styler.dim(`    ... and ${report.unreachablePages.length - 15} more`));
+    }
+    lines.push(styler.dim("    These pages were not scanned. Nothing has been established about them."));
   }
 
   // --- Suppressed ---

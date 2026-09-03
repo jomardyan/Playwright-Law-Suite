@@ -13,6 +13,7 @@ import { createProgressReporter } from "./cli/progress.js";
 import { runInitWizard } from "./cli/initWizard.js";
 import { exploreReport } from "./cli/explore.js";
 import { NonInteractiveError } from "./cli/prompts.js";
+import { explainError, validateScope, type ScopeProblem } from "./cli/diagnostics.js";
 import type { ScopeDetection } from "./modules/scope/resolveScope.js";
 import { logger } from "./utils/logger.js";
 import type { UniVerscanConfig } from "./config/schema.js";
@@ -42,6 +43,33 @@ function isQuiet(): boolean {
   return program.opts<{ quiet?: boolean }>().quiet === true;
 }
 
+program.addHelpText(
+  "after",
+  `
+Getting started:
+  universcan init                          set a project up interactively
+  universcan autoscan --url https://x.com  detect the target's markets, then scan
+  universcan packs                         list the regulatory packs and their dates
+
+Typical use:
+  universcan scan --url https://shop.example --jurisdictions "European Union" --sector e-commerce
+  universcan scan --config universcan.config.json --format json,html,markdown
+  universcan explore --input ./universcan-report/report.json
+  universcan diff --baseline ./before/report.json --current ./after/report.json
+
+In CI:
+  universcan scan --config universcan.config.json --format json,sarif,markdown \\
+    --baseline ./baseline/report.json --fail-on-new --fail-on critical,high
+
+Exit codes:
+  0  no findings at the fail-on severities
+  1  findings at or above --fail-on
+  2  the scan could not run (bad input, no packs selected, nothing reachable)
+
+UniVerscan reports evidence and manual-review items. It does not certify legal compliance.
+`
+);
+
 function splitList(value?: string): string[] | undefined {
   return value ? value.split(",").map((v) => v.trim()).filter(Boolean) : undefined;
 }
@@ -62,6 +90,61 @@ function readReport(path: string): ScanReport | null {
     logger.error(`Could not read report at ${path}`, error);
     return null;
   }
+}
+
+/**
+ * Checks the resolved scope before a browser is launched and prints anything
+ * wrong with it. Returns false when the scan must not proceed.
+ *
+ * Catching this here matters more than it looks: a mistyped pack id loads no
+ * rules at all, and without this the scan would run, find nothing, and exit
+ * zero - a clean bill of health for a check that never happened.
+ */
+async function preflight(config: UniVerscanConfig): Promise<boolean> {
+  const loader = new PackLoader();
+  const allPacks = loader.listBuiltIn();
+  const applicable = await loader.load(config);
+  const problems = validateScope(config, allPacks, applicable);
+  if (problems.length === 0) return true;
+
+  const capabilities = capabilitiesFor();
+  const styler = new Styler(capabilities);
+  const symbols = symbolsFor(capabilities);
+  for (const problem of problems) {
+    const marker = problem.severity === "error" ? styler.red(symbols.cross) : styler.yellow(symbols.warning);
+    process.stderr.write(`${marker} ${problem.message}\n`);
+    if (problem.hint) process.stderr.write(`  ${styler.dim(problem.hint)}\n`);
+  }
+  return !problems.some((problem: ScopeProblem) => problem.severity === "error");
+}
+
+/** Prints what a reader can usefully do next with the report just written. */
+function printNextSteps(report: ScanReport, config: UniVerscanConfig, written: string[]): void {
+  const capabilities = capabilitiesFor();
+  const styler = new Styler(capabilities);
+  const symbols = symbolsFor(capabilities);
+  if (written.length === 0) return;
+
+  const lines: string[] = [];
+  const json = written.find((path) => path.endsWith(".json"));
+  const html = written.find((path) => path.endsWith(".html"));
+  if (json && report.findings.length > 0) {
+    lines.push(`browse the findings   ${styler.bold(`universcan explore --input ${json}`)}`);
+  }
+  if (html) lines.push(`open the dashboard    ${styler.bold(html)}`);
+  if (json) {
+    lines.push(`compare a later scan  ${styler.bold(`universcan scan --config ... --baseline ${json} --fail-on-new`)}`);
+  }
+  if (report.coverage.manualReviewItems > 0) {
+    lines.push(
+      `${styler.magenta(String(report.coverage.manualReviewItems))} item(s) need a person to decide; the scan only collected the evidence.`
+    );
+  }
+  if (lines.length === 0) return;
+
+  process.stderr.write(`\n${styler.dim("Next:")}\n`);
+  for (const line of lines) process.stderr.write(`  ${styler.dim(symbols.arrow)} ${line}\n`);
+  process.stderr.write("\n");
 }
 
 /**
@@ -108,6 +191,17 @@ function finishScan(
     logger.warn(
       `${report.coverage.rulesNotEvaluated} rule(s) could not be evaluated in this scan. They are reported as 'not-evaluated', not as passes.`
     );
+  }
+
+  // A scan that reached nothing established nothing. Exiting zero would let
+  // an unreachable staging host read as a clean build, which is the most
+  // expensive way this tool could mislead someone.
+  if (report.coverage.pagesScanned === 0 && (report.coverage.pagesUnreachable ?? 0) > 0) {
+    logger.error(
+      `No page could be loaded (${report.coverage.pagesUnreachable} unreachable). This scan established nothing; it is not a pass.`
+    );
+    process.exitCode = 2;
+    return;
   }
   if (warningCount > 0) {
     logger.warn(`Scan found ${warningCount} finding(s) at the configured warn-on severities: ${warnOnSeverities.join(", ")}`);
@@ -179,6 +273,16 @@ program
   .option("--fail-on <list>", "Comma-separated severities that cause a non-zero exit code")
   .option("--baseline <path>", "Path to a previous report.json; prints what changed since that scan")
   .option("--fail-on-new", "Only fail on findings that are new relative to --baseline", false)
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ universcan scan --url https://shop.example --jurisdictions "European Union"
+  $ universcan scan --repo ../my-app --allow-install --allow-build
+  $ universcan scan --config universcan.config.json --format json,html,sarif
+  $ universcan scan --config c.json --baseline ./prev/report.json --fail-on-new
+`
+  )
   .action(async (options) => {
     let config: UniVerscanConfig;
     if (options.config) {
@@ -209,6 +313,11 @@ program
       return;
     }
 
+    if (!(await preflight(config))) {
+      process.exitCode = 2;
+      return;
+    }
+
     const progress = createProgressReporter(capabilitiesFor(), { quiet: isQuiet() });
     const engine = new ScanEngine(progress);
     let report: ScanReport;
@@ -224,6 +333,7 @@ program
     }
 
     finishScan(report, config, options);
+    printNextSteps(report, config, written);
   });
 
 program
@@ -243,6 +353,15 @@ program
   .option("--fail-on <list>", "Comma-separated severities that cause a non-zero exit code")
   .option("--baseline <path>", "Path to a previous report.json; prints what changed since that scan")
   .option("--fail-on-new", "Only fail on findings that are new relative to --baseline", false)
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ universcan autoscan --url https://shop.example
+  $ universcan autoscan --url https://shop.example --detect-only
+  $ universcan autoscan --url https://shop.example --sector banking
+`
+  )
   .action(async (options) => {
     const config = options.config ? loadConfig(resolve(options.config)) : loadConfigFromObject({});
     if (options.url) config.target.url = options.url;
@@ -271,6 +390,11 @@ program
     console.log(renderScopeDetection(detection, resolved));
     if (options.detectOnly) return;
 
+    if (!(await preflight(resolved))) {
+      process.exitCode = 2;
+      return;
+    }
+
     const progress = createProgressReporter(capabilitiesFor(), { quiet: isQuiet() });
     let report: ScanReport;
     try {
@@ -282,6 +406,7 @@ program
     const written = writeReports(report, resolved);
     if (written.length > 0) logger.info(`Report(s) written: ${written.join(", ")}`);
     finishScan(report, resolved, options);
+    printNextSteps(report, resolved, written);
   });
 
 program
@@ -430,6 +555,22 @@ program
   });
 
 program.parseAsync(process.argv).catch((error) => {
-  logger.error("UniVerscan CLI failed", error);
+  const capabilities = capabilitiesFor();
+  const styler = new Styler(capabilities);
+  const symbols = symbolsFor(capabilities);
+
+  const explained = explainError(error);
+  if (explained) {
+    process.stderr.write(`${styler.red(symbols.cross)} ${explained.message}\n`);
+    if (explained.hint) process.stderr.write(`  ${styler.dim(explained.hint)}\n`);
+    // The stack is still available, just not in the reader's face.
+    logger.debug("Underlying error", error);
+  } else {
+    process.stderr.write(`${styler.red(symbols.cross)} ${(error as Error).message ?? String(error)}\n`);
+    process.stderr.write(
+      `  ${styler.dim("Re-run with UNIVERSCAN_DEBUG=1 for the full stack trace, or open an issue with it.")}\n`
+    );
+    logger.debug("Underlying error", error);
+  }
   process.exitCode = 1;
 });

@@ -169,6 +169,11 @@ An agent has no terminal, so the interactive commands are not for you:
   cleanly. Do not parse the console report; parse `report.json`.
 - Progress output is on stderr too. Pass `--quiet` when it would clutter a
   captured log.
+- **Exit code 2 means the scan could not run** - bad input, a selection that
+  loads no packs, or nothing reachable. It is not a pass and not a finding
+  count; do not summarise such a run as "no issues found". Check
+  `coverage.pagesScanned` and `coverage.pagesUnreachable` before reporting
+  any result.
 - Colour is off automatically without a TTY. If something in your harness
   sets `FORCE_COLOR`, pass `--no-color` so escape sequences do not end up in
   text you quote back to a human.

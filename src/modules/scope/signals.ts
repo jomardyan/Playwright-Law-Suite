@@ -29,6 +29,72 @@ export const CANONICAL_JURISDICTIONS = {
 
 export type CanonicalJurisdiction = (typeof CANONICAL_JURISDICTIONS)[keyof typeof CANONICAL_JURISDICTIONS];
 
+/**
+ * Country and regime names a user is likely to type, mapped to the canonical
+ * jurisdiction whose pack actually covers them.
+ *
+ * Someone scanning a German shop reasonably types "Germany"; no pack matches
+ * that spelling, and without this the tool would only be able to say "no
+ * pack matched" without saying which one they wanted.
+ */
+export const JURISDICTION_ALIASES: Record<string, CanonicalJurisdiction> = {
+  // EU member states.
+  austria: "European Union",
+  belgium: "European Union",
+  bulgaria: "European Union",
+  croatia: "European Union",
+  cyprus: "European Union",
+  czechia: "European Union",
+  "czech republic": "European Union",
+  denmark: "European Union",
+  estonia: "European Union",
+  finland: "European Union",
+  france: "European Union",
+  germany: "European Union",
+  greece: "European Union",
+  hungary: "European Union",
+  ireland: "European Union",
+  italy: "European Union",
+  latvia: "European Union",
+  lithuania: "European Union",
+  luxembourg: "European Union",
+  malta: "European Union",
+  netherlands: "European Union",
+  "the netherlands": "European Union",
+  poland: "European Union",
+  portugal: "European Union",
+  romania: "European Union",
+  slovakia: "European Union",
+  slovenia: "European Union",
+  spain: "European Union",
+  sweden: "European Union",
+  eea: "European Union",
+  "european economic area": "European Union",
+  europe: "European Union",
+  gdpr: "European Union",
+  // Other covered markets, by their common names.
+  britain: "United Kingdom",
+  "great britain": "United Kingdom",
+  england: "United Kingdom",
+  scotland: "United Kingdom",
+  wales: "United Kingdom",
+  "northern ireland": "United Kingdom",
+  usa: "United States",
+  america: "United States",
+  "united states of america": "United States",
+  california: "United States - California",
+  ccpa: "United States - California",
+  cpra: "United States - California",
+  brasil: "Brazil",
+  lgpd: "Brazil",
+  pipeda: "Canada",
+  appi: "Japan",
+  nippon: "Japan",
+  bharat: "India",
+  dpdp: "India",
+  "privacy act": "Australia",
+};
+
 export type SignalKind =
   | "hreflang"
   | "cctld"

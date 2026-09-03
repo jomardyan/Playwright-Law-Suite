@@ -49,6 +49,13 @@ describe.skipIf(!hasLocalChromium)("ScanEngine end-to-end: enhanced signal colle
         res.end(ROBOTS_TXT);
         return;
       }
+      // One path answers 404 so the error-status case can be exercised; the
+      // rest return the fixture, since the crawl follows links into them.
+      if ((req.url ?? "").startsWith("/gone")) {
+        res.writeHead(404, { "Content-Type": "text/html" });
+        res.end("<html><body><h1>Not found</h1></body></html>");
+        return;
+      }
       // Deliberately omits every header the security pack looks for.
       res.writeHead(200, { "Content-Type": "text/html", "Set-Cookie": "sessionid=abc123; Path=/" });
       res.end(HOME_HTML);
@@ -161,4 +168,54 @@ describe.skipIf(!hasLocalChromium)("ScanEngine end-to-end: enhanced signal colle
     expect(diff.resolvedFindings.some((d) => d.finding.ruleId === "security-response-headers")).toBe(true);
     expect(diff.newFindings).toHaveLength(0);
   }, 180_000);
+
+  it("reports an unreachable page as not-evaluated, never as a violation", async () => {
+    // A page that never loaded has no content for a rule to reason about.
+    // Handing it to the rules used to manufacture confirmed violations out
+    // of a blank error document - "no privacy policy link found" on a page
+    // that does not exist.
+    const outputDir = mkdtempSync(join(tmpdir(), "universcan-unreachable-"));
+    const config = loadConfigFromObject({
+      // Port 1 is reserved and nothing listens on it, so navigation fails.
+      target: { url: "http://127.0.0.1:1/" },
+      jurisdictions: ["European Union"],
+      regulatoryPacks: ["eu-gdpr-eprivacy", "global-data-security"],
+      crawl: { depth: 0, pageLimit: 1, respectRobotsTxt: false },
+      consent: { enabled: false },
+      reporting: { formats: [], outputDir },
+    });
+
+    const report = await new ScanEngine().runLive(config);
+
+    expect(report.coverage.pagesScanned).toBe(0);
+    expect(report.coverage.pagesUnreachable).toBe(1);
+    expect(report.unreachablePages).toHaveLength(1);
+    expect(report.unreachablePages[0].url).toContain("127.0.0.1:1");
+
+    // Nothing may be asserted about a site nobody could reach.
+    const asserted = report.findings.filter((f) =>
+      ["violation", "probable-violation", "risk", "missing-disclosure", "inconsistent"].includes(f.status)
+    );
+    expect(asserted).toEqual([]);
+    expect(report.findings.every((f) => f.status === "not-evaluated" || f.status === "manual-review")).toBe(true);
+    expect(report.coverage.rulesNotEvaluated).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("skips a route that answers with an error status rather than scanning the error page", async () => {
+    const outputDir = mkdtempSync(join(tmpdir(), "universcan-404-"));
+    const config = loadConfigFromObject({
+      target: { url: `${baseUrl}gone` },
+      jurisdictions: ["European Union"],
+      regulatoryPacks: ["eu-gdpr-eprivacy"],
+      crawl: { depth: 0, pageLimit: 1, respectRobotsTxt: false },
+      consent: { enabled: false },
+      reporting: { formats: [], outputDir },
+    });
+
+    const report = await new ScanEngine().runLive(config);
+
+    expect(report.coverage.pagesScanned).toBe(0);
+    expect(report.unreachablePages[0].httpStatus).toBe(404);
+    expect(report.unreachablePages[0].reason).toContain("404");
+  }, 120_000);
 });

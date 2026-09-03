@@ -116,6 +116,7 @@ function report(overrides: Partial<ScanReport> = {}): ScanReport {
     },
     findings: [finding()],
     suppressedFindings: [],
+    unreachablePages: [],
     thirdPartyServices: [],
     coverage: {
       jurisdictionsSelected: ["European Union"],
@@ -124,6 +125,7 @@ function report(overrides: Partial<ScanReport> = {}): ScanReport {
       rulesSkippedNotApplicable: 1,
       rulesNotEvaluated: 2,
       pagesScanned: 3,
+      pagesUnreachable: 0,
       manualReviewItems: 1,
       findingsSuppressedByException: 0,
     },

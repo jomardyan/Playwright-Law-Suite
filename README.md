@@ -32,6 +32,7 @@ first scan to a CI gate.
   - [Writing your own rule pack](#writing-your-own-rule-pack)
   - [Using the framework as a library](#using-the-framework-as-a-library)
 - [Interactive use](#interactive-use)
+  - [When something is wrong](#when-something-is-wrong)
 - [Command reference](#command-reference)
 - [Configuration reference](#configuration-reference)
 - [CI integration](#ci-integration)
@@ -412,8 +413,8 @@ node dist/cli.js scan \
   --fail-on critical,high
 ```
 
-Exit codes: `0` clean, `1` findings at or above `--fail-on`, `2` a usage or
-input error. With `--fail-on-new`, only findings absent from the baseline
+Exit codes: `0` clean, `1` findings at or above `--fail-on`, `2` the scan
+could not run (bad input, no packs selected, or nothing reachable). With `--fail-on-new`, only findings absent from the baseline
 count toward the gate; everything else still appears in every report.
 
 `.github/workflows/universcan.yml` wires this up: SARIF to code scanning,
@@ -728,6 +729,36 @@ node dist/cli.js report --input report.json --format markdown > summary.md   # c
 
 `--quiet` suppresses progress entirely.
 
+### When something is wrong
+
+Failures name the problem and the fix, rather than a stack trace:
+
+```text
+x No regulatory pack is called 'eu-gdpr'.
+  Did you mean 'eu-gdpr-eprivacy'? Run 'universcan packs' for the full list.
+
+! 'Germany' matched no jurisdiction-specific pack, so no rules for that market will run.
+  Use 'European Union' instead - that is the pack covering Germany.
+```
+
+These checks run **before** the browser launches, so a selection that would
+scan nothing fails in a second rather than after a full crawl. That matters
+more than it sounds: a mistyped pack id used to load no rules at all, find
+nothing, and exit zero - a clean bill of health for a check that never ran.
+
+Two things the CLI now refuses to let pass quietly:
+
+- **A page that could not be loaded is never scanned.** Handing a blank
+  error document to the rules manufactured confirmed violations out of
+  nothing ("no privacy policy link found" on a page that does not exist).
+  Unreachable routes are listed in their own report section, counted in
+  `coverage.pagesUnreachable`, and the rules that needed them report
+  `not-evaluated`.
+- **A scan that reached nothing exits 2, not 0.** An unreachable staging
+  host must not read as a green build.
+
+Set `UNIVERSCAN_DEBUG=1` for the full stack trace behind any message.
+
 ### Controlling the output
 
 | Setting | Effect |
@@ -739,6 +770,7 @@ node dist/cli.js report --input report.json --format markdown > summary.md   # c
 | `CI` set | Never interactive, whatever else is true. |
 | `--quiet` | No progress output. |
 | `packs --plain` | Tab-separated pack list for scripting. |
+| `UNIVERSCAN_DEBUG=1` | Full stack traces instead of summarised errors. |
 
 Width is read from the terminal and clamped to a sane range, so tables and
 wrapped text fit an 80-column window and a 200-column one alike.

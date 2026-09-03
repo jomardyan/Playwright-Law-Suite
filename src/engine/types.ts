@@ -219,13 +219,28 @@ export interface RegulatoryPack {
   rules: Rule[];
 }
 
+/**
+ * A route that was discovered but could not be scanned. Kept in the report
+ * rather than dropped: a page nobody could load is an unknown, and must not
+ * read as either a pass or a failure.
+ */
+export interface UnreachablePage {
+  url: string;
+  /** Navigation error, or the HTTP status that made the page unusable. */
+  reason: string;
+  httpStatus: number | null;
+}
+
 export interface CoverageSummary {
   jurisdictionsSelected: string[];
   packsLoaded: string[];
   rulesEvaluated: number;
   rulesSkippedNotApplicable: number;
   rulesNotEvaluated: number;
+  /** Pages that actually loaded and were handed to the rules. */
   pagesScanned: number;
+  /** Pages that were discovered but could not be loaded. Never counted as scanned. */
+  pagesUnreachable: number;
   manualReviewItems: number;
   /** Findings moved out of `findings` by an explicit, documented config exception. */
   findingsSuppressedByException: number;
@@ -262,6 +277,8 @@ export interface ScanReport {
   findings: Finding[];
   /** Findings withheld from `findings` by a documented exception in the config. */
   suppressedFindings: SuppressedFinding[];
+  /** Routes that could not be loaded, and why. */
+  unreachablePages: UnreachablePage[];
   thirdPartyServices: ThirdPartyServiceRecord[];
   coverage: CoverageSummary;
   riskIndicators: {

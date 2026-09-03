@@ -132,6 +132,7 @@ export function renderMarkdownReport(report: ScanReport): string {
   lines.push(`| Rules evaluated | ${report.coverage.rulesEvaluated} |`);
   lines.push(`| Rules not applicable | ${report.coverage.rulesSkippedNotApplicable} |`);
   lines.push(`| Rules that could not run | ${report.coverage.rulesNotEvaluated} |`);
+  lines.push(`| Pages unreachable | ${report.coverage.pagesUnreachable ?? 0} |`);
   lines.push(`| Manual review items | ${report.coverage.manualReviewItems} |`);
   lines.push(`| Automated technical coverage | ${pct(report.riskIndicators.automatedTechnicalCoverage)} |`);
   lines.push(`| Unresolved compliance risk | ${pct(report.riskIndicators.unresolvedComplianceRisk)} |`);
@@ -169,6 +170,19 @@ export function renderMarkdownReport(report: ScanReport): string {
           truncate(entry.reason, 200)
         )} | ${escapeCell(entry.approvedBy ?? "-")} | ${escapeCell(entry.expires ?? "-")} |`
       );
+    }
+    lines.push("");
+  }
+
+  if ((report.unreachablePages ?? []).length > 0) {
+    lines.push(`## Pages that could not be loaded (${report.unreachablePages.length})`);
+    lines.push("");
+    lines.push("These pages were not scanned. Nothing has been established about them - they are unknown, not clean.");
+    lines.push("");
+    lines.push("| URL | Reason |");
+    lines.push("| --- | --- |");
+    for (const entry of report.unreachablePages) {
+      lines.push(`| ${escapeCell(truncate(entry.url, 100))} | ${escapeCell(entry.reason)} |`);
     }
     lines.push("");
   }

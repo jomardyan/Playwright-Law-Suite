@@ -33,6 +33,7 @@ function report(findings: Finding[], generatedAt = "2026-01-01T00:00:00Z"): Scan
     },
     findings,
     suppressedFindings: [],
+    unreachablePages: [],
     thirdPartyServices: [],
     coverage: {
       jurisdictionsSelected: ["European Union"],
@@ -41,6 +42,7 @@ function report(findings: Finding[], generatedAt = "2026-01-01T00:00:00Z"): Scan
       rulesSkippedNotApplicable: 0,
       rulesNotEvaluated: 0,
       pagesScanned: 1,
+      pagesUnreachable: 0,
       manualReviewItems: 0,
       findingsSuppressedByException: 0,
     },
