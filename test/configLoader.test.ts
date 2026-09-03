@@ -89,3 +89,47 @@ describe("customRulesPaths resolution", () => {
     expect(config.customRulesPaths).toEqual([join("/srv/app", "rules", "local.js")]);
   });
 });
+
+describe("extends resolution", () => {
+  it("resolves a bundled profile from the package, not the working directory", () => {
+    // A config written into a user's project must be able to extend a
+    // bundled profile from anywhere, not only from inside a clone of this
+    // repository. Simulated by pointing cwd somewhere with no config/ dir.
+    const dir = mkdtempSync(join(tmpdir(), "universcan-extends-"));
+    const configPath = join(dir, "universcan.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ extends: "global-baseline", jurisdictions: ["European Union"] }),
+      "utf-8"
+    );
+
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const config = loadConfig(configPath);
+      // Values that only exist in the bundled baseline.
+      expect(config.accessibility.standard).toBe("wcag22aa");
+      expect(config.crawl.respectRobotsTxt).toBe(true);
+      expect(config.jurisdictions).toEqual(["European Union"]);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  it("names every location it searched when an extends target is missing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "universcan-extends-"));
+    const configPath = join(dir, "universcan.config.json");
+    writeFileSync(configPath, JSON.stringify({ extends: "no-such-profile" }), "utf-8");
+
+    expect(() => loadConfig(configPath)).toThrow(/extends 'no-such-profile'.*Looked in/s);
+  });
+
+  it("lets a sibling file shadow a bundled profile name", () => {
+    const dir = mkdtempSync(join(tmpdir(), "universcan-extends-"));
+    writeFileSync(join(dir, "house-baseline.json"), JSON.stringify({ crawl: { pageLimit: 7 } }), "utf-8");
+    const configPath = join(dir, "universcan.config.json");
+    writeFileSync(configPath, JSON.stringify({ extends: "./house-baseline.json" }), "utf-8");
+
+    expect(loadConfig(configPath).crawl.pageLimit).toBe(7);
+  });
+});

@@ -31,6 +31,7 @@ first scan to a CI gate.
   - [Scanning a repository instead of a URL](#scanning-a-repository-instead-of-a-url)
   - [Writing your own rule pack](#writing-your-own-rule-pack)
   - [Using the framework as a library](#using-the-framework-as-a-library)
+- [Interactive use](#interactive-use)
 - [Command reference](#command-reference)
 - [Configuration reference](#configuration-reference)
 - [CI integration](#ci-integration)
@@ -196,6 +197,11 @@ obligations apply from:
 ```bash
 node dist/cli.js packs
 ```
+
+In a hurry? `node dist/cli.js init` walks you through the whole of Steps 2-4
+interactively - it probes the site, proposes a scope, shows which packs that
+scope loads, and writes the config file. See
+[Interactive use](#interactive-use).
 
 ### Step 2 - Run your first scan
 
@@ -643,10 +649,110 @@ console.log(`${report.coverage.rulesNotEvaluated} rule(s) could not run - not pa
 already know the mode. `diffReports(baseline, current)` gives you the same
 comparison the `diff` command prints, as a structured object.
 
+## Interactive use
+
+The CLI is built for CI first, so every interactive affordance degrades
+rather than breaking. Colour, Unicode glyphs, spinners and prompts all
+switch off automatically when there is no terminal to render them, and the
+plain output is what a pipeline log actually wants.
+
+### `init` - set a project up
+
+```bash
+node dist/cli.js init
+```
+
+Asks what to scan, offers to probe the site for its target markets, lets you
+accept or correct the proposal, then shows exactly which packs the resulting
+scope loads **before** it writes anything:
+
+```text
+Proposed scope
+  ✓ European Union (high confidence)
+      • an hreflang alternate for "de-DE"
+      • euro prices
+      • and 3 more signal(s)
+  ✓ United Kingdom (medium confidence)
+      • an hreflang alternate for "en-GB"
+
+  This was inferred from the site, not from any record of where the business
+  operates. A market that was not detected was not scanned, and an unscanned
+  market is an unknown rather than a clean one.
+
+❯ Use these 2 market(s)? [Y/n]
+```
+
+Answer `n` and you get the full market list to pick from by hand. Scope is a
+decision about legal exposure, so the wizard always proposes and never
+decides.
+
+`--url` skips the first question, `--no-detect` goes straight to manual
+selection, and `--yes` accepts every default for scripted setup.
+
+### `explore` - browse a report
+
+```bash
+node dist/cli.js explore --input ./universcan-report/report.json
+```
+
+A scan of a real site produces more findings than fit on a screen. This
+pages through them and filters by status, severity or pack, searches free
+text, and opens any finding with its evidence, legal reference and
+remediation:
+
+```text
+─── 36 of 36 finding(s) ──────────────────────────────────────────────────
+  filters: none
+   #  SEVERITY  STATUS              RULE                         WHERE
+  ────────────────────────────────────────────────────────────────────────
+   1  critical  missing-disclosure  gdpr-privacy-policy-present  /
+   5  high      probable-violation  crd-withdrawal-function-...  /
+
+  showing 1-15 of 36   • [n]ext [p]rev [number] open
+                       • [s]tatus [v]severity [k]pack [/]search [c]lear  • [q]uit
+```
+
+Commands are a single key plus Enter, so it works over a slow SSH session
+and needs no raw-mode terminal handling.
+
+### Live progress
+
+`scan` and `autoscan` show a spinner with a page counter while they work,
+and a per-step line when there is no TTY. Progress is written to **stderr**,
+never stdout, so piping a report to a file or another process gives you the
+report and nothing else:
+
+```bash
+node dist/cli.js report --input report.json --format markdown > summary.md   # clean
+```
+
+`--quiet` suppresses progress entirely.
+
+### Controlling the output
+
+| Setting | Effect |
+| --- | --- |
+| `--no-color` | Plain text, even on a terminal. |
+| `NO_COLOR=1` | Same, via the [no-color.org](https://no-color.org) convention. |
+| `FORCE_COLOR=1` | Keep colour when piping, for a log viewer that renders it. |
+| `TERM=dumb` | Disables colour, Unicode and prompts. |
+| `CI` set | Never interactive, whatever else is true. |
+| `--quiet` | No progress output. |
+| `packs --plain` | Tab-separated pack list for scripting. |
+
+Width is read from the terminal and clamped to a sane range, so tables and
+wrapped text fit an 80-column window and a 200-column one alike.
+
+Anything that needs a person degrades with an explanation rather than
+hanging: `init` and `explore` exit with code 2 and point at the
+non-interactive alternative when stdin is not a terminal.
+
 ## Command reference
 
 | Command | Purpose |
 | --- | --- |
+| `init` | Interactive setup: proposes a scope, then writes a config file. |
+| `explore` | Browse a report interactively: page, filter, search, open a finding. |
 | `autoscan` | Detect the target's markets and sector, then scan against them. |
 | `scan` | Scan a URL and/or a repository and write reports. |
 | `diff` | Compare two `report.json` files. |
@@ -673,6 +779,13 @@ Key `scan` options:
 
 `autoscan` accepts the same options plus `--detect-only` (print the inferred
 scope and exit without scanning). It requires `--url`.
+
+Global options, valid on every command:
+
+| Option | Purpose |
+| --- | --- |
+| `--no-color` | Disable coloured output. |
+| `--quiet` | Suppress live progress. |
 
 ## Configuration reference
 

@@ -19,6 +19,7 @@ import { startApplication } from "../modules/source/AppRunner.js";
 import { runStaticAnalysis } from "../modules/source/StaticAnalyzer.js";
 import { logger } from "../utils/logger.js";
 import type {
+  ScanProgress,
   CoverageSummary,
   Finding,
   PageContext,
@@ -45,8 +46,26 @@ function computeRiskIndicators(findings: Finding[], coverage: CoverageSummary, c
   };
 }
 
+/** No-op progress sink, used when the caller supplies none. */
+const NO_PROGRESS: ScanProgress = {
+  start: () => undefined,
+  step: () => undefined,
+  finish: () => undefined,
+  warn: () => undefined,
+  stop: () => undefined,
+};
+
 export class ScanEngine {
   private readonly packLoader = new PackLoader();
+  private readonly progress: ScanProgress;
+
+  /**
+   * @param progress optional sink for live progress. Defaults to a no-op, so
+   * a library consumer that does not care about progress sees no change.
+   */
+  constructor(progress: ScanProgress = NO_PROGRESS) {
+    this.progress = progress;
+  }
 
   /** Runs every applicable rule from every loaded pack against a built ScanContext. */
   private async evaluateRules(
@@ -145,8 +164,10 @@ export class ScanEngine {
     const authContext = await browserManager.newAuthenticatedContext(config.authentication);
     const page = await authContext.newPage();
     const discovery = new SiteDiscovery();
+    this.progress.start("Discovering routes");
     const routes = await discovery.discover(config.target.url, page, config);
-    logger.info(`Discovered ${routes.length} route(s) to scan`);
+    this.progress.finish(`${routes.length} route(s) to scan`);
+    logger.debug(`Discovered ${routes.length} route(s) to scan`);
 
     const accessibilityScanner = new AccessibilityScanner();
     const formsScanner = new FormsScanner();
@@ -164,12 +185,15 @@ export class ScanEngine {
     const pages: PageContext[] = [];
     let thirdPartyServices: ThirdPartyServiceRecord[] = [];
 
+    this.progress.start("Scanning pages", routes.length);
     for (const [index, route] of routes.entries()) {
-      logger.info(`Scanning ${route.url}`);
+      this.progress.step(route.url);
+      logger.debug(`Scanning ${route.url}`);
       const response = await page
         .goto(route.url, { waitUntil: "domcontentloaded", timeout: 30_000 })
         .catch((error) => {
-          logger.warn(`Failed to navigate to ${route.url}`, error);
+          this.progress.warn(`Could not load ${route.url}: ${(error as Error).message}`);
+          logger.debug(`Failed to navigate to ${route.url}`, error);
           return null;
         });
 
@@ -224,6 +248,8 @@ export class ScanEngine {
       });
     }
 
+    this.progress.finish(`${pages.length} page(s) scanned`);
+
     const scanContext: ScanContext = {
       config,
       mode: "live",
@@ -233,7 +259,9 @@ export class ScanEngine {
       startedAt: new Date().toISOString(),
     };
 
+    this.progress.start("Evaluating rules");
     const { findings: rawFindings, coverage: partialCoverage, packs: packIds } = await this.evaluateRules(scanContext);
+    this.progress.finish(`${partialCoverage.rulesEvaluated} rule(s) evaluated across ${packIds.length} pack(s)`);
     const { findings, suppressed } = applyExceptions(rawFindings, config);
     const coverage: CoverageSummary = {
       ...partialCoverage,

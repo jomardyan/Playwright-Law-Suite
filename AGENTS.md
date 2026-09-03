@@ -157,6 +157,22 @@ the second scan did not reach - establish which. The diff's
 and report `not-evaluated` now: that is lost coverage, and must never be
 summarized as a fix.
 
+## Running the CLI as an agent
+
+An agent has no terminal, so the interactive commands are not for you:
+
+- **Never invoke `init` or `explore`.** Both need a person at a keyboard and
+  exit with code 2 when stdin is not a TTY. Write the config file directly,
+  and read `report.json` rather than browsing it.
+- Diagnostics go to **stderr** and report content to **stdout**, so
+  `universcan report --input r.json --format markdown` can be captured
+  cleanly. Do not parse the console report; parse `report.json`.
+- Progress output is on stderr too. Pass `--quiet` when it would clutter a
+  captured log.
+- Colour is off automatically without a TTY. If something in your harness
+  sets `FORCE_COLOR`, pass `--no-color` so escape sequences do not end up in
+  text you quote back to a human.
+
 ## Agent safety rules
 
 Agents using UniVerscan must never:

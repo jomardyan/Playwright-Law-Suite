@@ -1,7 +1,27 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import { load as parseYaml } from "js-yaml";
 import { DEFAULT_CONFIG, type UniVerscanConfig } from "./schema.js";
+
+/**
+ * Directories searched for a bundled profile named by `extends`.
+ *
+ * The package's own `config/profiles/` comes first, located relative to this
+ * module rather than to the working directory: a config written into a
+ * user's project must be able to extend `global-baseline` from anywhere, not
+ * only when the process happens to be running inside a clone of this repo.
+ * The working directory is still searched, so a project can shadow a bundled
+ * profile with one of its own.
+ */
+function bundledProfileDirectories(): string[] {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return [
+    // dist/config/loader.js -> package root, and src/config/loader.ts in dev.
+    resolve(here, "..", "..", "config", "profiles"),
+    resolve(process.cwd(), "config", "profiles"),
+  ];
+}
 
 function parseConfigFile(path: string): Partial<UniVerscanConfig> {
   const raw = readFileSync(path, "utf-8");
@@ -58,9 +78,23 @@ export function loadConfig(path: string): UniVerscanConfig {
     if (isAbsolute(ref) || ref.startsWith(".")) {
       return resolve(dirname(fromFile), ref);
     }
-    const bundled = resolve(process.cwd(), "config", "profiles", `${ref}.json`);
-    if (existsSync(bundled)) return bundled;
-    return resolve(dirname(fromFile), ref);
+    for (const directory of bundledProfileDirectories()) {
+      const candidate = resolve(directory, `${ref}.json`);
+      if (existsSync(candidate)) return candidate;
+    }
+    // Not a bundled profile: fall back to a sibling of the extending file,
+    // so a project can keep its own baseline next to its config.
+    const sibling = resolve(dirname(fromFile), ref);
+    if (existsSync(sibling)) return sibling;
+    const withExtension = resolve(dirname(fromFile), `${ref}.json`);
+    if (existsSync(withExtension)) return withExtension;
+    throw new Error(
+      `Config '${fromFile}' extends '${ref}', which could not be found. Looked in: ${[
+        ...bundledProfileDirectories().map((directory) => resolve(directory, `${ref}.json`)),
+        sibling,
+        withExtension,
+      ].join(", ")}`
+    );
   }
 
   function load(filePath: string): Partial<UniVerscanConfig> {

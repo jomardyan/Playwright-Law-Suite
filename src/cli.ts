@@ -8,6 +8,11 @@ import { PackLoader } from "./packs/PackLoader.js";
 import { writeReports, renderMarkdownReport } from "./reporters/index.js";
 import { diffReports, renderDiffMarkdown } from "./engine/ReportDiff.js";
 import { detectScope } from "./engine/AutoScan.js";
+import { currentCapabilities, renderTable, Styler, rule, symbolsFor } from "./cli/terminal.js";
+import { createProgressReporter } from "./cli/progress.js";
+import { runInitWizard } from "./cli/initWizard.js";
+import { exploreReport } from "./cli/explore.js";
+import { NonInteractiveError } from "./cli/prompts.js";
 import type { ScopeDetection } from "./modules/scope/resolveScope.js";
 import { logger } from "./utils/logger.js";
 import type { UniVerscanConfig } from "./config/schema.js";
@@ -15,7 +20,27 @@ import type { ScanReport, Severity } from "./engine/types.js";
 
 const program = new Command();
 
-program.name("universcan").description("Universal Playwright Web Compliance Scanner").version("0.2.0");
+program
+  .name("universcan")
+  .description("Universal Playwright Web Compliance Scanner")
+  .version("0.3.0")
+  .option("--no-color", "Disable coloured output (NO_COLOR is also honoured)")
+  .option("--quiet", "Suppress live progress output", false);
+
+/**
+ * Terminal capabilities for this invocation, with the global flags applied.
+ * Resolved once so every command renders consistently.
+ */
+function capabilitiesFor(): ReturnType<typeof currentCapabilities> {
+  const globals = program.opts<{ color?: boolean }>();
+  const base = currentCapabilities();
+  // commander maps --no-color to color:false.
+  return globals.color === false ? { ...base, color: false } : base;
+}
+
+function isQuiet(): boolean {
+  return program.opts<{ quiet?: boolean }>().quiet === true;
+}
 
 function splitList(value?: string): string[] | undefined {
   return value ? value.split(",").map((v) => v.trim()).filter(Boolean) : undefined;
@@ -184,8 +209,15 @@ program
       return;
     }
 
-    const engine = new ScanEngine();
-    const report = await engine.run(config);
+    const progress = createProgressReporter(capabilitiesFor(), { quiet: isQuiet() });
+    const engine = new ScanEngine(progress);
+    let report: ScanReport;
+    try {
+      report = await engine.run(config);
+    } finally {
+      // Always clear the spinner line, including on a thrown scan.
+      progress.stop();
+    }
     const written = writeReports(report, config);
     if (written.length > 0) {
       logger.info(`Report(s) written: ${written.join(", ")}`);
@@ -239,7 +271,13 @@ program
     console.log(renderScopeDetection(detection, resolved));
     if (options.detectOnly) return;
 
-    const report = await new ScanEngine().run(resolved);
+    const progress = createProgressReporter(capabilitiesFor(), { quiet: isQuiet() });
+    let report: ScanReport;
+    try {
+      report = await new ScanEngine(progress).run(resolved);
+    } finally {
+      progress.stop();
+    }
     report.meta.scopeDetection = detection;
     const written = writeReports(report, resolved);
     if (written.length > 0) logger.info(`Report(s) written: ${written.join(", ")}`);
@@ -287,15 +325,108 @@ program
   });
 
 program
+  .command("init")
+  .description("Interactive setup: proposes a scope by probing the site, then writes a config file")
+  .option("--url <url>", "Skip the first question and use this URL")
+  .option("--out <path>", "Where to write the config", "./universcan.config.json")
+  .option("--no-detect", "Do not probe the site; choose the markets by hand")
+  .option("--yes", "Accept every default without asking (for scripted setup)", false)
+  .action(async (options) => {
+    try {
+      const result = await runInitWizard({
+        capabilities: capabilitiesFor(),
+        targetPath: options.out,
+        url: options.url,
+        assumeYes: options.yes,
+        skipDetection: options.detect === false,
+      });
+      if (!result) process.exitCode = 1;
+    } catch (error) {
+      if (error instanceof NonInteractiveError) {
+        logger.error(error.message);
+        process.exitCode = 2;
+        return;
+      }
+      throw error;
+    }
+  });
+
+program
+  .command("explore")
+  .description("Browse a report interactively: page, filter by status/severity/pack, search, and open a finding")
+  .requiredOption("--input <path>", "Path to a report.json")
+  .action(async (options) => {
+    const capabilities = capabilitiesFor();
+    if (!capabilities.interactive) {
+      logger.error(
+        "explore needs an interactive terminal. Use 'universcan report --input <path> --format markdown' for a non-interactive view."
+      );
+      process.exitCode = 2;
+      return;
+    }
+    const report = readReport(resolve(options.input));
+    if (!report) {
+      process.exitCode = 2;
+      return;
+    }
+    if (report.findings.length === 0) {
+      const styler = new Styler(capabilities);
+      console.log(`${styler.green(symbolsFor(capabilities).check)} This report contains no findings to browse.`);
+      return;
+    }
+    await exploreReport(report, capabilities);
+  });
+
+program
   .command("packs")
   .description("List built-in regulatory packs")
-  .action(() => {
+  .option("--plain", "Tab-separated output for scripting", false)
+  .action((options) => {
     const loader = new PackLoader();
-    for (const pack of loader.listBuiltIn()) {
-      console.log(
-        `${pack.id}\t${pack.regulation}\t${pack.jurisdiction}\tv${pack.version}\teffective ${pack.effectiveDate}\t${pack.rules.length} rule(s)`
-      );
+    const packs = loader.listBuiltIn();
+
+    if (options.plain) {
+      for (const pack of packs) {
+        console.log(
+          `${pack.id}\t${pack.regulation}\t${pack.jurisdiction}\tv${pack.version}\t${pack.effectiveDate}\t${pack.rules.length}`
+        );
+      }
+      return;
     }
+
+    const capabilities = capabilitiesFor();
+    const styler = new Styler(capabilities);
+    const rows = packs.map((pack) => [
+      pack.id,
+      pack.regulation,
+      pack.jurisdiction,
+      pack.effectiveDate,
+      String(pack.rules.length),
+    ]);
+    console.log("");
+    console.log(rule(capabilities, styler, `${packs.length} built-in regulatory packs`));
+    console.log("");
+    for (const line of renderTable(
+      [
+        { header: "PACK", maxShare: 0.2 },
+        { header: "REGULATION", maxShare: 0.42 },
+        { header: "JURISDICTION", maxShare: 0.2 },
+        { header: "EFFECTIVE" },
+        { header: "RULES", align: "right" },
+      ],
+      rows,
+      capabilities,
+      styler
+    )) {
+      console.log(`  ${line}`);
+    }
+    console.log("");
+    console.log(
+      styler.dim(
+        `  ${packs.reduce((sum, pack) => sum + pack.rules.length, 0)} rules total. A pack loads only when its jurisdiction is in scope.`
+      )
+    );
+    console.log("");
   });
 
 program.parseAsync(process.argv).catch((error) => {

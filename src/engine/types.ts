@@ -170,6 +170,19 @@ export interface ScanContext {
   startedAt: string;
 }
 
+/**
+ * Progress sink the engine reports into during a scan. Declared here, not in
+ * the CLI, so the engine depends on the contract rather than on a terminal:
+ * a library consumer or a GUI can supply its own.
+ */
+export interface ScanProgress {
+  start(phase: string, total?: number): void;
+  step(label: string): void;
+  finish(summary?: string): void;
+  warn(message: string): void;
+  stop(): void;
+}
+
 export interface Rule {
   id: string;
   requirement: string;
