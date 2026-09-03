@@ -161,7 +161,7 @@ export class ScanEngine {
   async runLive(config: UniVerscanConfig): Promise<ScanReport> {
     if (!config.target.url) throw new Error("config.target.url is required for live mode");
     const evidence = new EvidenceStore(config.reporting.outputDir);
-    const browserManager = new BrowserManager();
+    const browserManager = new BrowserManager(config.browser ?? {});
     await browserManager.launch();
 
     const authContext = await browserManager.newAuthenticatedContext(config.authentication);
@@ -195,7 +195,7 @@ export class ScanEngine {
       logger.debug(`Scanning ${route.url}`);
       let navigationError: string | null = null;
       const response = await page
-        .goto(route.url, { waitUntil: "domcontentloaded", timeout: 30_000 })
+        .goto(route.url, { waitUntil: "domcontentloaded", timeout: browserManager.navigationTimeoutMs })
         .catch((error) => {
           navigationError = (error as Error).message.split("\n")[0];
           this.progress.warn(`Could not load ${route.url}: ${navigationError}`);

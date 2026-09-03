@@ -32,7 +32,7 @@ export async function detectScope(config: UniVerscanConfig): Promise<ScopeDetect
   const targetUrl = config.target.url;
   if (!targetUrl) throw new Error("autoscan requires config.target.url");
 
-  const browserManager = new BrowserManager();
+  const browserManager = new BrowserManager(config.browser ?? {});
   await browserManager.launch();
   const context = await browserManager.newContext();
   const page = await context.newPage();

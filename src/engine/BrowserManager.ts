@@ -1,6 +1,46 @@
-import { chromium, type Browser, type BrowserContext } from "playwright";
-import type { AuthenticationConfig } from "../config/schema.js";
+import { chromium, firefox, webkit, type Browser, type BrowserContext, type BrowserType, type LaunchOptions } from "playwright";
+import type { AuthenticationConfig, BrowserConfig } from "../config/schema.js";
 import { logger } from "../utils/logger.js";
+
+const ENGINES: Record<NonNullable<BrowserConfig["engine"]>, BrowserType> = {
+  chromium,
+  firefox,
+  webkit,
+};
+
+/**
+ * Chromium's setuid sandbox cannot run as uid 0, which is the default in most
+ * container images. Rather than making every containerised user discover
+ * this through an opaque launch failure, the flag is added automatically -
+ * and logged, because disabling the sandbox is a real trade-off and should
+ * never happen silently.
+ */
+function containerSandboxArgs(config: BrowserConfig): string[] {
+  if (config.engine && config.engine !== "chromium") return [];
+  if ((config.args ?? []).some((arg) => arg.startsWith("--no-sandbox"))) return [];
+  if (process.env.UNIVERSCAN_NO_SANDBOX === "0") return [];
+
+  const forced = process.env.UNIVERSCAN_NO_SANDBOX === "1";
+  const runningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (!forced && !runningAsRoot) return [];
+
+  logger.warn(
+    "Adding --no-sandbox: Chromium's sandbox cannot run as root, which is the default in most containers. Set UNIVERSCAN_NO_SANDBOX=0 to opt out, or run the scan as a non-root user to keep the sandbox."
+  );
+  return ["--no-sandbox", "--disable-dev-shm-usage"];
+}
+
+/** Resolves proxy credentials from the environment; they never live in a config file. */
+function resolveProxy(config: BrowserConfig): LaunchOptions["proxy"] {
+  const proxy = config.proxy;
+  if (!proxy?.server) return undefined;
+  const username = proxy.usernameEnvVar ? process.env[proxy.usernameEnvVar] : undefined;
+  const password = proxy.passwordEnvVar ? process.env[proxy.passwordEnvVar] : undefined;
+  if (proxy.usernameEnvVar && !username) {
+    logger.warn(`Proxy username env var ${proxy.usernameEnvVar} is not set; connecting without credentials.`);
+  }
+  return { server: proxy.server, bypass: proxy.bypass, username, password };
+}
 
 /**
  * Owns the Playwright browser lifecycle. One BrowserManager per scan; callers
@@ -9,14 +49,49 @@ import { logger } from "../utils/logger.js";
  */
 export class BrowserManager {
   private browser: Browser | null = null;
+  private readonly config: BrowserConfig;
+
+  constructor(config: BrowserConfig = {}) {
+    this.config = config;
+  }
+
+  /** The engine actually in use, for reporting and for capability decisions. */
+  get engine(): NonNullable<BrowserConfig["engine"]> {
+    return this.config.engine ?? "chromium";
+  }
+
+  get navigationTimeoutMs(): number {
+    return this.config.navigationTimeoutMs ?? 30_000;
+  }
 
   async launch(): Promise<void> {
     if (this.browser) return;
     // UNIVERSCAN_CHROMIUM_PATH lets a CI/sandbox environment point at a
-    // pre-installed Chromium build instead of the one Playwright would try
-    // to download; normal installs should leave this unset.
-    const executablePath = process.env.UNIVERSCAN_CHROMIUM_PATH || undefined;
-    this.browser = await chromium.launch({ headless: true, executablePath });
+    // pre-installed browser instead of the one Playwright would download;
+    // an explicit config value wins over it.
+    const executablePath = this.config.executablePath || process.env.UNIVERSCAN_CHROMIUM_PATH || undefined;
+    const browserType = ENGINES[this.engine];
+
+    const options: LaunchOptions = {
+      headless: this.config.headless ?? true,
+      executablePath,
+      channel: this.config.channel,
+      args: [...containerSandboxArgs(this.config), ...(this.config.args ?? [])],
+      timeout: this.config.launchTimeoutMs ?? 60_000,
+      proxy: resolveProxy(this.config),
+    };
+
+    try {
+      this.browser = await browserType.launch(options);
+    } catch (error) {
+      // The default message points at Playwright internals; this one points
+      // at what the operator can actually do about it.
+      const detail = (error as Error).message.split("\n")[0];
+      throw new Error(
+        `Could not launch ${this.engine}: ${detail}. Install it with 'npx playwright install --with-deps ${this.engine}', point browser.executablePath (or UNIVERSCAN_CHROMIUM_PATH) at an existing binary, or set browser.channel to use a system browser.`
+      );
+    }
+    logger.debug(`Launched ${this.engine}${this.config.channel ? ` (channel ${this.config.channel})` : ""}`);
   }
 
   /**
@@ -38,11 +113,15 @@ export class BrowserManager {
     const context = await this.browser.newContext({
       storageState: options?.storageStatePath,
       viewport: options?.viewport ?? { width: 1366, height: 900 },
-      isMobile: options?.isMobile,
-      hasTouch: options?.isMobile,
+      // isMobile and hasTouch are Chromium-only; passing them to Firefox or
+      // WebKit throws rather than being ignored.
+      isMobile: this.engine === "chromium" ? options?.isMobile : undefined,
+      hasTouch: this.engine === "chromium" ? options?.isMobile : undefined,
       locale: options?.locale,
+      ignoreHTTPSErrors: this.config.ignoreHTTPSErrors ?? false,
       extraHTTPHeaders: options?.globalPrivacyControl ? { "Sec-GPC": "1" } : undefined,
     });
+    context.setDefaultNavigationTimeout(this.navigationTimeoutMs);
     if (options?.globalPrivacyControl) {
       await context.addInitScript(() => {
         Object.defineProperty(Navigator.prototype, "globalPrivacyControl", {

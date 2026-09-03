@@ -45,6 +45,25 @@ const transportEncryption = defineRule({
   remediation: "Serve the whole site over HTTPS and redirect plaintext requests permanently.",
   run: (context) => {
     const findings = [];
+    // With certificate verification disabled the scan cannot speak to
+    // transport security honestly: a site with a broken chain looks the same
+    // as one with a valid chain. Reporting a pass here would be the exact
+    // false reassurance this tool exists to avoid.
+    if (context.config.browser?.ignoreHTTPSErrors) {
+      const page = context.pages[0];
+      return page
+        ? [
+            buildFinding(transportEncryption, PACK_ID, REGULATION, JURISDICTION, {
+              status: "not-evaluated",
+              affectedUrl: page.url,
+              observedBehavior:
+                "browser.ignoreHTTPSErrors is enabled, so certificate validity was not checked and transport security cannot be assessed.",
+              expectedBehavior: "All pages are served over HTTPS with a valid certificate chain.",
+              manualReviewRequired: true,
+            }),
+          ]
+        : [];
+    }
     for (const page of context.pages) {
       const security = page.securityHeaders;
       if (!security) continue;

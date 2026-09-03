@@ -1,0 +1,33 @@
+# GitLab CI. The Playwright image supplies Chromium and its libraries.
+stages: [compliance]
+
+universcan:
+  stage: compliance
+  image: mcr.microsoft.com/playwright:v1.62.1-jammy
+  variables:
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    # GitLab runners execute as root, so Chromium's sandbox cannot start.
+    # UniVerscan adds --no-sandbox automatically and says so in the log.
+  before_script:
+    - npm ci
+    - npm run build
+    # Prove the environment before blaming the scan for an environment fault.
+    - node dist/cli.js doctor
+  script:
+    - |
+      node dist/cli.js scan \
+        --config config/profiles/eu-ecommerce.json \
+        --url "$STAGING_URL" \
+        --format json,html,junit,markdown \
+        --out ./universcan-report \
+        --fail-on critical,high
+  after_script:
+    - cat universcan-report/report.md >> "$CI_JOB_NAME.md" || true
+  artifacts:
+    when: always
+    paths: [universcan-report/]
+    reports:
+      junit: universcan-report/report.junit.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

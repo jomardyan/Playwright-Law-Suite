@@ -69,15 +69,30 @@ export function parseRobotsTxt(body: string): RobotsRules {
   return { disallow: chosen.disallow, allow: chosen.allow, sitemaps, loaded: true };
 }
 
-export async function fetchRobotsTxt(baseUrl: string): Promise<RobotsRules> {
+/**
+ * Fetches a URL as text, or null if it could not be read.
+ *
+ * Injected rather than hardcoded so robots.txt and sitemaps travel the same
+ * network path as the browser. Node's global `fetch` ignores a configured
+ * browser proxy and any custom CA, so on a corporate network the crawler
+ * would otherwise see a different internet than the pages it scans.
+ */
+export type TextFetcher = (url: string) => Promise<{ ok: boolean; body: string } | null>;
+
+export const nodeTextFetcher: TextFetcher = async (url) => {
+  const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  return { ok: response.ok, body: await response.text() };
+};
+
+export async function fetchRobotsTxt(baseUrl: string, fetcher: TextFetcher = nodeTextFetcher): Promise<RobotsRules> {
   try {
     const robotsUrl = new URL("/robots.txt", baseUrl).toString();
-    const response = await fetch(robotsUrl, { signal: AbortSignal.timeout(8000) });
+    const response = await fetcher(robotsUrl);
     // A 4xx means "no restrictions published"; a 5xx is an unknown state, but
     // treating it as blanket-disallow would silently produce an empty scan,
     // which reads as a pass. Both are reported as `loaded: false` instead.
-    if (!response.ok) return EMPTY_ROBOTS;
-    return parseRobotsTxt(await response.text());
+    if (!response?.ok) return EMPTY_ROBOTS;
+    return parseRobotsTxt(response.body);
   } catch (error) {
     logger.debug("robots.txt not available or unreadable", error);
     return EMPTY_ROBOTS;
