@@ -14,6 +14,7 @@ import { runInitWizard } from "./cli/initWizard.js";
 import { exploreReport } from "./cli/explore.js";
 import { NonInteractiveError } from "./cli/prompts.js";
 import { explainError, validateScope, type ScopeProblem } from "./cli/diagnostics.js";
+import { overallStatus, runDoctor } from "./cli/doctor.js";
 import type { ScopeDetection } from "./modules/scope/resolveScope.js";
 import { logger } from "./utils/logger.js";
 import type { UniVerscanConfig } from "./config/schema.js";
@@ -47,6 +48,7 @@ program.addHelpText(
   "after",
   `
 Getting started:
+  universcan doctor                        check this environment can run a scan
   universcan init                          set a project up interactively
   universcan autoscan --url https://x.com  detect the target's markets, then scan
   universcan packs                         list the regulatory packs and their dates
@@ -267,7 +269,7 @@ program
   .option("--sector <sector>", "Business sector, e.g. 'e-commerce'")
   .option("--accessibility-standard <standard>", "wcag2a | wcag2aa | wcag21aa | wcag22aa | wcag22aaa")
   .option("--format <list>", "Comma-separated report formats: json,html,console,junit,sarif,markdown,csv")
-  .option("--out <dir>", "Output directory for reports", "./universcan-report")
+  .option("--out <dir>", "Output directory for reports (default: ./universcan-report, or reporting.outputDir from --config)")
   .option("--allow-install", "Permit installing dependencies in source mode", false)
   .option("--allow-build", "Permit building/starting the application in source mode", false)
   .option("--fail-on <list>", "Comma-separated severities that cause a non-zero exit code")
@@ -348,7 +350,7 @@ program
   .option("--packs <list>", "Comma-separated regulatory pack ids to restrict the scan to")
   .option("--accessibility-standard <standard>", "wcag2a | wcag2aa | wcag21aa | wcag22aa | wcag22aaa")
   .option("--format <list>", "Comma-separated report formats: json,html,console,junit,sarif,markdown,csv")
-  .option("--out <dir>", "Output directory for reports", "./universcan-report")
+  .option("--out <dir>", "Output directory for reports (default: ./universcan-report, or reporting.outputDir from --config)")
   .option("--detect-only", "Print the detected scope and exit without scanning", false)
   .option("--fail-on <list>", "Comma-separated severities that cause a non-zero exit code")
   .option("--baseline <path>", "Path to a previous report.json; prints what changed since that scan")
@@ -447,6 +449,46 @@ program
       return;
     }
     console.log(renderMarkdownReport(report));
+  });
+
+program
+  .command("doctor")
+  .description("Check that this environment can run a scan: Node, browser, sandbox, proxy, TLS, permissions, packs")
+  .option("--config <path>", "Check against a specific configuration")
+  .option("--skip-browser", "Skip the browser launch probe (faster, but proves less)", false)
+  .action(async (options) => {
+    const config = options.config ? loadConfig(resolve(options.config)) : loadConfigFromObject({});
+    const capabilities = capabilitiesFor();
+    const styler = new Styler(capabilities);
+    const symbols = symbolsFor(capabilities);
+
+    console.log("");
+    console.log(rule(capabilities, styler, "UniVerscan environment check"));
+    console.log("");
+
+    const results = await runDoctor(config, { skipBrowser: options.skipBrowser });
+    for (const result of results) {
+      const marker =
+        result.status === "ok"
+          ? styler.green(symbols.check)
+          : result.status === "warn"
+            ? styler.yellow(symbols.warning)
+            : styler.red(symbols.cross);
+      console.log(`  ${marker} ${styler.bold(result.name.padEnd(20))} ${result.detail}`);
+      if (result.hint) console.log(`    ${styler.dim(result.hint)}`);
+    }
+
+    const status = overallStatus(results);
+    console.log("");
+    if (status === "fail") {
+      console.log(`  ${styler.red(symbols.cross)} This environment cannot run a scan yet. Fix the items above.`);
+      process.exitCode = 2;
+    } else if (status === "warn") {
+      console.log(`  ${styler.yellow(symbols.warning)} A scan will run, but read the warnings above first.`);
+    } else {
+      console.log(`  ${styler.green(symbols.check)} Ready to scan.`);
+    }
+    console.log("");
   });
 
 program

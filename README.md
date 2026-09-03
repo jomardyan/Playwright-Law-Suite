@@ -31,6 +31,7 @@ first scan to a CI gate.
   - [Scanning a repository instead of a URL](#scanning-a-repository-instead-of-a-url)
   - [Writing your own rule pack](#writing-your-own-rule-pack)
   - [Using the framework as a library](#using-the-framework-as-a-library)
+- [Running it in your environment](#running-it-in-your-environment)
 - [Interactive use](#interactive-use)
   - [When something is wrong](#when-something-is-wrong)
 - [Command reference](#command-reference)
@@ -800,10 +801,123 @@ Anything that needs a person degrades with an explanation rather than
 hanging: `init` and `explore` exit with code 2 and point at the
 non-interactive alternative when stdin is not a terminal.
 
+## Running it in your environment
+
+Start with the preflight - it checks Node, the browser, the sandbox, proxy,
+TLS trust, write permissions and pack selection, and says what to do about
+anything wrong:
+
+```bash
+universcan doctor
+```
+
+```text
+  + Node.js              v20.11.0
+  + Platform             linux x64
+  ! Browser sandbox      Running as root, so --no-sandbox will be added automatically.
+    Running the scan as a non-root user keeps the sandbox on. In Docker, add a USER line.
+  ! Proxy                A proxy is set in the environment but not in the config, so browser
+                         traffic will bypass it.
+    Set browser.proxy.server to the same value so the scan sees the network your users do.
+  + Browser              chromium launches and renders.
+```
+
+Exit code `0` clean, `2` when something must be fixed first.
+
+### Containers
+
+`Dockerfile` builds on Playwright's own image, which already carries the
+browser and its system libraries - the part that is genuinely painful to
+reproduce. Two things matter:
+
+- **Pin the image tag to the resolved Playwright version**, not the caret
+  range. A driver newer than the image's browser builds fine and then fails
+  to launch. Check with `node -p "require('playwright/package.json').version"`.
+- **Run as a non-root user.** Chromium's setuid sandbox cannot start as uid
+  0. UniVerscan detects root and adds `--no-sandbox` automatically, logging
+  that it did, so a container works out of the box - but the sandbox is a
+  real protection, and the shipped `Dockerfile` uses `USER pwuser` to keep
+  it. `UNIVERSCAN_NO_SANDBOX=0` opts out of the automatic flag.
+
+```bash
+docker build -t universcan .
+docker run --rm -v "$PWD/reports:/reports" universcan \
+  scan --url https://shop.example --jurisdictions "European Union" --out /reports
+```
+
+### CI systems
+
+`.github/workflows/universcan.yml` is the worked GitHub example.
+`examples/ci/` has equivalents for **GitLab CI**, **Azure Pipelines**,
+**Jenkins** and **CircleCI**. All four follow the same shape: run `doctor`
+first so an environment fault is not mistaken for a finding, then scan, then
+publish `report.junit.xml` and the HTML artifact.
+
+Exit codes are what a pipeline should branch on:
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | No findings at the fail-on severities. |
+| `1` | Findings at or above `--fail-on`. A compliance result. |
+| `2` | The scan could not run - bad input, no packs selected, nothing reachable. An infrastructure result, not a clean bill of health. |
+
+### Browsers, proxies and TLS
+
+Everything about the browser is configurable, because some environment
+always cannot run the default:
+
+```jsonc
+{
+  "browser": {
+    "engine": "chromium",              // or firefox / webkit
+    "channel": "msedge",               // use a system browser instead of a download
+    "executablePath": "/opt/chromium", // or set UNIVERSCAN_CHROMIUM_PATH
+    "headless": true,
+    "args": ["--disable-gpu"],         // e.g. --no-sandbox, added for you as root
+    "launchTimeoutMs": 60000,
+    "navigationTimeoutMs": 30000,
+    "proxy": {
+      "server": "http://proxy.corp:8080",
+      "bypass": "*.internal",
+      "usernameEnvVar": "PROXY_USER",  // credentials come from the environment,
+      "passwordEnvVar": "PROXY_PASS"   // never from the config file
+    }
+  }
+}
+```
+
+robots.txt and sitemap fetches go through the **browser's** network stack,
+not Node's `fetch`, so they inherit the proxy and TLS settings above. Without
+that the crawler and the scanner would see different networks behind a
+corporate proxy.
+
+For a TLS-intercepting proxy, add your root certificate with
+`NODE_EXTRA_CA_CERTS=/path/to/root.pem`. Do **not** reach for
+`NODE_TLS_REJECT_UNAUTHORIZED=0` - `doctor` reports it as a failure, because
+a scanner that ignores certificates cannot report on transport security. If
+you set `browser.ignoreHTTPSErrors` anyway, the transport rules downgrade
+themselves to `not-evaluated` rather than reporting a pass they cannot
+justify.
+
+### Using it as a library
+
+The package is ESM-only, and says so precisely: `require()` throws a message
+telling you to use a dynamic import, rather than Node's opaque
+`ERR_PACKAGE_PATH_NOT_EXPORTED`.
+
+```js
+import { ScanEngine, loadConfig } from "universcan";        // ESM
+const { ScanEngine } = await import("universcan");           // from CommonJS
+```
+
+Requires **Node 18 or newer** (global `fetch`, `AbortSignal.timeout`); an
+even-numbered LTS line is recommended and `doctor` warns otherwise.
+
 ## Command reference
 
 | Command | Purpose |
 | --- | --- |
+| `doctor` | Check this environment can run a scan: Node, browser, sandbox, proxy, TLS, permissions, packs. |
 | `init` | Interactive setup: proposes a scope, then writes a config file. |
 | `explore` | Browse a report interactively: page, filter, search, open a finding. |
 | `autoscan` | Detect the target's markets and sector, then scan against them. |
@@ -865,6 +979,7 @@ country- or sector-specific files on top.
 | `source.allowInstall` / `allowBuild` | Permit dependency install / app startup in source mode. |
 | `customRulesPaths` | Load your own packs; relative paths resolve against the config file. |
 | `ignoredFindings` | Documented accepted risks (see above). |
+| `browser.*` | Engine, channel, executable, headless, args, timeouts, proxy, TLS. See above. |
 | `reporting.formats`, `reporting.outputDir` | What to write and where. |
 | `ci.failOn`, `ci.warnOn` | Severities that fail or warn. |
 

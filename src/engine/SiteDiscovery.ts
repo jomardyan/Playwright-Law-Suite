@@ -3,7 +3,7 @@ import type { Page } from "playwright";
 import type { UniVerscanConfig } from "../config/schema.js";
 import type { DiscoveredRoute } from "./types.js";
 import { logger } from "../utils/logger.js";
-import { EMPTY_ROBOTS, fetchRobotsTxt, isAllowedByRobots, type RobotsRules } from "../utils/robots.js";
+import { EMPTY_ROBOTS, fetchRobotsTxt, isAllowedByRobots, type RobotsRules, type TextFetcher } from "../utils/robots.js";
 
 const PRIORITY_KEYWORDS: Array<{ pattern: RegExp; priority: number; label: string }> = [
   { pattern: /^\/?$/, priority: 100, label: "home" },
@@ -29,11 +29,26 @@ function scoreRoute(pathname: string): { priority: number; label?: string } {
   return { priority: 40 };
 }
 
-async function tryLoadSitemap(baseUrl: string, sitemapUrl = new URL("/sitemap.xml", baseUrl).toString()): Promise<string[]> {
+/**
+ * Routes an auxiliary fetch through the browser context, so it inherits the
+ * proxy, custom CA, and any TLS setting the scan was configured with.
+ */
+function browserTextFetcher(page: Page): TextFetcher {
+  return async (url) => {
+    const response = await page.request.get(url, { timeout: 8000, failOnStatusCode: false });
+    return { ok: response.ok(), body: await response.text() };
+  };
+}
+
+async function tryLoadSitemap(
+  fetcher: TextFetcher,
+  baseUrl: string,
+  sitemapUrl = new URL("/sitemap.xml", baseUrl).toString()
+): Promise<string[]> {
   try {
-    const response = await fetch(sitemapUrl, { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return [];
-    const xml = await response.text();
+    const response = await fetcher(sitemapUrl);
+    if (!response?.ok) return [];
+    const xml = response.body;
     const parser = new XMLParser();
     const parsed = parser.parse(xml) as { urlset?: { url?: Array<{ loc: string }> | { loc: string } } };
     const urls = parsed.urlset?.url;
@@ -69,7 +84,9 @@ export class SiteDiscovery {
     const routes = new Map<string, DiscoveredRoute>();
     let robotsBlocked = 0;
 
-    const robots: RobotsRules = config.crawl.respectRobotsTxt === false ? EMPTY_ROBOTS : await fetchRobotsTxt(baseUrl);
+    const fetcher = browserTextFetcher(page);
+    const robots: RobotsRules =
+      config.crawl.respectRobotsTxt === false ? EMPTY_ROBOTS : await fetchRobotsTxt(baseUrl, fetcher);
     if (robots.loaded) {
       logger.info(`robots.txt loaded: ${robots.disallow.length} disallow rule(s) apply to UniVerscan`);
     }
@@ -99,7 +116,7 @@ export class SiteDiscovery {
 
     const sitemapSources = robots.sitemaps.length > 0 ? robots.sitemaps : [new URL("/sitemap.xml", baseUrl).toString()];
     for (const sitemapUrl of sitemapSources) {
-      for (const url of await tryLoadSitemap(baseUrl, sitemapUrl)) addRoute(url, "sitemap");
+      for (const url of await tryLoadSitemap(fetcher, baseUrl, sitemapUrl)) addRoute(url, "sitemap");
     }
 
     if (routes.size < config.crawl.pageLimit) {

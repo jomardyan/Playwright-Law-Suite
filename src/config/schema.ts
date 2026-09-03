@@ -24,6 +24,46 @@ export interface ConsentSimulationConfig {
   probeGlobalPrivacyControl?: boolean;
 }
 
+/**
+ * How the browser is launched. Every field exists because some environment
+ * cannot run the default: containers need sandbox flags, corporate networks
+ * need a proxy, locked-down hosts need a system browser rather than a
+ * downloaded one.
+ */
+export interface BrowserConfig {
+  /** Playwright engine. Chromium is the only one axe-core is validated against. */
+  engine?: "chromium" | "firefox" | "webkit";
+  /** Branded channel, e.g. "chrome" or "msedge", to use a system install. */
+  channel?: string;
+  /** Absolute path to a browser binary, for hosts that cannot download one. */
+  executablePath?: string;
+  headless?: boolean;
+  /**
+   * Extra launch arguments. The usual reason is `--no-sandbox`, which
+   * Chromium requires when running as root in a container.
+   */
+  args?: string[];
+  /** Milliseconds to wait for the browser to start. */
+  launchTimeoutMs?: number;
+  /** Milliseconds to wait for each page navigation. */
+  navigationTimeoutMs?: number;
+  proxy?: {
+    /** e.g. "http://proxy.corp:8080" or "socks5://proxy:1080". */
+    server: string;
+    /** Comma-separated hosts that bypass the proxy. */
+    bypass?: string;
+    usernameEnvVar?: string;
+    passwordEnvVar?: string;
+  };
+  /**
+   * Accept TLS certificates that fail verification. Off by default and
+   * deliberately awkward to reach: a scanner that ignores certificate errors
+   * cannot report on transport security honestly, so enabling it downgrades
+   * the transport rules to `not-evaluated` rather than passing them.
+   */
+  ignoreHTTPSErrors?: boolean;
+}
+
 export interface SourceModeConfig {
   repoPath?: string;
   allowInstall?: boolean;
@@ -67,6 +107,8 @@ export interface UniVerscanConfig {
   };
 
   authentication?: AuthenticationConfig;
+
+  browser?: BrowserConfig;
 
   crawl: {
     depth: number;
@@ -128,6 +170,14 @@ export const DEFAULT_CONFIG: UniVerscanConfig = {
       "text=/necessary only/i",
       "#onetrust-reject-all-handler",
     ],
+  },
+  browser: {
+    engine: "chromium",
+    headless: true,
+    args: [],
+    launchTimeoutMs: 60_000,
+    navigationTimeoutMs: 30_000,
+    ignoreHTTPSErrors: false,
   },
   source: {
     allowInstall: false,

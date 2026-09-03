@@ -12,7 +12,10 @@
   "files": [
     "dist",
     "config",
-    "AGENTS.md"
+    "require-shim.cjs",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -20,7 +23,9 @@
     "scan": "tsx src/cli.ts scan",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "postinstall:browsers": "playwright install --with-deps chromium",
+    "doctor": "node dist/cli.js doctor"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.1",
@@ -39,5 +44,33 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "keywords": [
+    "compliance",
+    "accessibility",
+    "gdpr",
+    "privacy",
+    "wcag",
+    "playwright",
+    "scanner",
+    "a11y",
+    "cookies",
+    "sarif"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jomardyan/Playwright-Law-Suite.git"
+  },
+  "homepage": "https://github.com/jomardyan/Playwright-Law-Suite#readme",
+  "bugs": {
+    "url": "https://github.com/jomardyan/Playwright-Law-Suite/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./require-shim.cjs"
+    },
+    "./package.json": "./package.json"
   }
 }

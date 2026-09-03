@@ -1,0 +1,41 @@
+# CircleCI.
+version: 2.1
+
+jobs:
+  compliance-scan:
+    docker:
+      - image: mcr.microsoft.com/playwright:v1.62.1-jammy
+        environment:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - 'v1-deps-{{ checksum "package-lock.json" }}'
+      - run: npm ci
+      - save_cache:
+          key: 'v1-deps-{{ checksum "package-lock.json" }}'
+          paths:
+            - node_modules
+      - run: npm run build
+      - run:
+          name: Check the environment
+          command: node dist/cli.js doctor
+      - run:
+          name: Compliance scan
+          command: |
+            node dist/cli.js scan \
+              --config config/profiles/eu-ecommerce.json \
+              --url "$STAGING_URL" \
+              --format json,html,junit,markdown \
+              --out ./universcan-report \
+              --fail-on critical,high
+      - store_test_results:
+          path: universcan-report
+      - store_artifacts:
+          path: universcan-report
+
+workflows:
+  compliance:
+    jobs:
+      - compliance-scan

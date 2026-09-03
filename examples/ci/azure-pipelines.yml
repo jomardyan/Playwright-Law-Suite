@@ -1,0 +1,46 @@
+# Azure DevOps.
+trigger:
+  branches: { include: [main] }
+pr:
+  branches: { include: [main] }
+
+pool:
+  vmImage: ubuntu-latest
+
+container: mcr.microsoft.com/playwright:v1.62.1-jammy
+
+variables:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+steps:
+  - task: NodeTool@0
+    inputs: { versionSpec: "20.x" }
+    displayName: Use Node 20
+
+  - script: npm ci && npm run build
+    displayName: Install and build
+
+  - script: node dist/cli.js doctor
+    displayName: Check the environment
+
+  - script: |
+      node dist/cli.js scan \
+        --config config/profiles/eu-ecommerce.json \
+        --url "$(STAGING_URL)" \
+        --format json,html,junit,markdown \
+        --out $(Build.ArtifactStagingDirectory)/universcan-report \
+        --fail-on critical,high
+    displayName: Compliance scan
+
+  - task: PublishTestResults@2
+    condition: always()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: "$(Build.ArtifactStagingDirectory)/universcan-report/report.junit.xml"
+      testRunTitle: UniVerscan findings
+
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    inputs:
+      pathToPublish: "$(Build.ArtifactStagingDirectory)/universcan-report"
+      artifactName: universcan-report

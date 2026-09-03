@@ -1,0 +1,46 @@
+// Jenkins declarative pipeline.
+pipeline {
+  agent {
+    docker {
+      image 'mcr.microsoft.com/playwright:v1.62.1-jammy'
+      // Jenkins usually runs the container as the build user; -u root is a
+      // common workaround, and UniVerscan copes either way (it adds
+      // --no-sandbox only when it detects uid 0, and logs that it did).
+      args '-e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1'
+    }
+  }
+
+  environment {
+    STAGING_URL = credentials('staging-url')
+  }
+
+  stages {
+    stage('Install')     { steps { sh 'npm ci && npm run build' } }
+    stage('Environment') { steps { sh 'node dist/cli.js doctor' } }
+    stage('Scan') {
+      steps {
+        // Exit 1 = findings at the fail-on severities; exit 2 = the scan
+        // could not run. Only the second is an infrastructure problem.
+        sh '''
+          node dist/cli.js scan \
+            --config config/profiles/eu-ecommerce.json \
+            --url "$STAGING_URL" \
+            --format json,html,junit,markdown \
+            --out ./universcan-report \
+            --fail-on critical,high
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      junit allowEmptyResults: true, testResults: 'universcan-report/report.junit.xml'
+      archiveArtifacts artifacts: 'universcan-report/**', allowEmptyArchive: true
+      publishHTML target: [
+        reportDir: 'universcan-report', reportFiles: 'report.html',
+        reportName: 'UniVerscan compliance report', keepAll: true, alwaysLinkToLastBuild: true
+      ]
+    }
+  }
+}
