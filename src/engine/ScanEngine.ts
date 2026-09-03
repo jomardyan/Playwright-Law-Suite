@@ -242,9 +242,9 @@ export class ScanEngine {
         return null;
       });
 
-      const accessibilityViolations = await accessibilityScanner.run(page, config.accessibility.standard).catch((error) => {
+      const accessibility = await accessibilityScanner.analyze(page, config.accessibility.standard).catch((error) => {
         logger.warn(`Accessibility scan failed for ${route.url}`, error);
-        return [];
+        return { violations: [], incomplete: [] };
       });
       const interactionChecks = config.accessibility.includeInteractionChecks
         ? await accessibilityScanner.runInteractionChecks(page).catch(() => [])
@@ -273,7 +273,8 @@ export class ScanEngine {
         url: route.url,
         route,
         consentFlow,
-        accessibilityViolations,
+        accessibilityViolations: accessibility.violations,
+        accessibilityIncomplete: accessibility.incomplete,
         interactionChecks,
         forms,
         privacyDocuments,

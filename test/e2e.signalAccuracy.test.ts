@@ -8,6 +8,7 @@ import { FormsScanner } from "../src/modules/forms/FormsScanner.js";
 import { ConsumerJourneyScanner } from "../src/modules/consumer/ConsumerJourneyScanner.js";
 import { PrivacyDocumentScanner } from "../src/modules/privacy/PrivacyDocumentScanner.js";
 import { CookieScanner } from "../src/modules/cookies/CookieScanner.js";
+import { AccessibilityScanner } from "../src/modules/accessibility/AccessibilityScanner.js";
 import { DEFAULT_CONFIG } from "../src/config/schema.js";
 
 const CHROMIUM_PATH = "/opt/pw-browsers/chromium";
@@ -114,6 +115,53 @@ const PRIVACY_HTML = `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Focus is indicated by a background change with the outline suppressed - the
+ * house style of most modern design systems, and previously reported as a
+ * WCAG 2.4.7 violation.
+ */
+const CUSTOM_FOCUS_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Custom focus</title>
+<style>
+  a:focus { outline: none; background: #002b5c; color: #fff; }
+</style></head>
+<body>
+  <main><h1>Custom focus</h1><a href="/next">Next</a></main>
+</body>
+</html>`;
+
+/** Focus is suppressed and nothing replaces it: a real 2.4.7 failure. */
+const NO_FOCUS_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>No focus</title>
+<style> a:focus { outline: none; } </style></head>
+<body>
+  <main><h1>No focus</h1><a href="/next">Next</a></main>
+</body>
+</html>`;
+
+/** Landmarks and headings, but no skip link. */
+const LANDMARKS_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Landmarks</title></head>
+<body>
+  <header>Site</header>
+  <nav><a href="/a">A</a></nav>
+  <main><h1>Landmarks</h1><h2>Section</h2><p>Body</p></main>
+</body>
+</html>`;
+
+/** A skip link, the classic bypass mechanism. */
+const SKIPLINK_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Skip link</title></head>
+<body>
+  <a href="#content">Skip to main content</a>
+  <main id="content"><h1>Skip link</h1></main>
+</body>
+</html>`;
+
 describe.skipIf(!hasLocalChromium)("signal collection accuracy", () => {
   let server: Server;
   let baseUrl: string;
@@ -123,7 +171,15 @@ describe.skipIf(!hasLocalChromium)("signal collection accuracy", () => {
   beforeAll(async () => {
     server = createServer((req, res) => {
       const url = req.url ?? "/";
-      const body = url.startsWith("/article")
+      const body = url.startsWith("/a11y/custom-focus")
+        ? CUSTOM_FOCUS_HTML
+        : url.startsWith("/a11y/no-focus")
+        ? NO_FOCUS_HTML
+        : url.startsWith("/a11y/landmarks")
+        ? LANDMARKS_HTML
+        : url.startsWith("/a11y/skiplink")
+        ? SKIPLINK_HTML
+        : url.startsWith("/article")
         ? ARTICLE_HTML
         : url.startsWith("/checkout")
           ? CHECKOUT_HTML
@@ -241,6 +297,49 @@ describe.skipIf(!hasLocalChromium)("signal collection accuracy", () => {
       expect(detected).toContain("legal-bases");
       expect(detected).toContain("supervisory-authority");
       expect(detected).toContain("controller-contact");
+    });
+  });
+
+  describe("AccessibilityScanner", () => {
+    const check = async (path: string, id: string) => {
+      await page.goto(`${baseUrl}${path}`);
+      const results = await new AccessibilityScanner().runInteractionChecks(page);
+      return results.find((result) => result.id === id);
+    };
+
+    it("accepts a focus indicator that is not an outline", async () => {
+      // Suppressing the outline and colouring the element instead is the
+      // house style of most design systems; it used to read as a violation.
+      const result = await check("/a11y/custom-focus", "focus-visible-indicator");
+      expect(result?.passed).toBe(true);
+      expect(result?.detail).toMatch(/backgroundColor|color/);
+    });
+
+    it("still reports a focused element that renders identically unfocused", async () => {
+      const result = await check("/a11y/no-focus", "focus-visible-indicator");
+      expect(result?.passed).toBe(false);
+    });
+
+    it("does not call a landmark-structured page a bypass-blocks failure", async () => {
+      // SC 2.4.1 accepts landmark navigation as a bypass mechanism, so the
+      // absence of a skip link is a question, not a verdict.
+      const result = await check("/a11y/landmarks", "bypass-blocks-mechanism");
+      expect(result?.passed).toBeNull();
+      expect(result?.detail).toContain("landmark");
+    });
+
+    it("passes a page that does have a skip link", async () => {
+      const result = await check("/a11y/skiplink", "bypass-blocks-mechanism");
+      expect(result?.passed).toBe(true);
+    });
+
+    it("returns axe's undecided checks instead of discarding them", async () => {
+      await page.goto(`${baseUrl}/signup`);
+      const result = await new AccessibilityScanner().analyze(page, "wcag22aa");
+      // The shape is what matters: incomplete results are carried, so a
+      // check axe could not decide can never be reported as a pass.
+      expect(Array.isArray(result.incomplete)).toBe(true);
+      expect(Array.isArray(result.violations)).toBe(true);
     });
   });
 

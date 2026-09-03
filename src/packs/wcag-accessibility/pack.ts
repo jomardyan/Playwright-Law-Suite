@@ -89,6 +89,45 @@ const interactionChecks = defineRule({
   },
 });
 
+/**
+ * axe reports three outcomes, not two: passes, violations, and checks it
+ * started but could not decide - contrast against a background image, an
+ * accessible name it cannot resolve, an element it cannot see into.
+ *
+ * These were being discarded, which meant a report listed a page as having
+ * no violations when part of the page had not actually been assessed. They
+ * are surfaced here as review items, never as violations: axe did not
+ * conclude, so neither does this.
+ */
+const axeIncomplete = defineRule({
+  id: "wcag-axe-core-incomplete",
+  requirement: "Automated accessibility checks that could not be decided must be reviewed by a person, not treated as passes.",
+  severity: "medium",
+  confidence: "medium",
+  automationLevel: "manual-review-required",
+  legalReference: "WCAG 2.2 (W3C Recommendation); EN 301 549",
+  remediation: "Review each listed element against the axe rule's help URL and decide the outcome by hand.",
+  run: (context) => {
+    const findings = [];
+    for (const page of context.pages) {
+      for (const item of page.accessibilityIncomplete ?? []) {
+        findings.push(
+          buildFinding(axeIncomplete, PACK_ID, REGULATION, JURISDICTION, {
+            status: "manual-review",
+            affectedUrl: page.url,
+            affectedElement: item.nodes[0]?.target.join(" ") ?? item.id,
+            observedBehavior: `${item.help} (rule: ${item.id}) could not be decided automatically on ${item.nodes.length} element(s); axe returned it as incomplete.`,
+            expectedBehavior: "Every applicable success criterion is assessed, by automation or by a person.",
+            evidence: [context.evidence.accessibilityResult(`axe-core incomplete: ${item.id}`, item)],
+            manualReviewRequired: true,
+          })
+        );
+      }
+    }
+    return findings;
+  },
+});
+
 export const wcagAccessibilityPack: RegulatoryPack = {
   id: PACK_ID,
   jurisdiction: JURISDICTION,
@@ -98,5 +137,5 @@ export const wcagAccessibilityPack: RegulatoryPack = {
   version: "2.2.0",
   effectiveDate: "2023-10-05",
   applicability: () => true,
-  rules: [axeViolations, interactionChecks] as Rule[],
+  rules: [axeViolations, axeIncomplete, interactionChecks] as Rule[],
 };
