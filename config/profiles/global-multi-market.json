@@ -8,7 +8,16 @@
     "Brazil",
     "Canada",
     "Japan",
-    "India"
+    "India",
+    "Switzerland",
+    "China",
+    "South Korea",
+    "Singapore",
+    "Thailand",
+    "South Africa",
+    "Saudi Arabia",
+    "Nigeria",
+    "Canada - Quebec"
   ],
   "customerMarkets": [
     "European Union",
@@ -18,7 +27,16 @@
     "Brazil",
     "Canada",
     "Japan",
-    "India"
+    "India",
+    "Switzerland",
+    "China",
+    "South Korea",
+    "Singapore",
+    "Thailand",
+    "South Africa",
+    "Saudi Arabia",
+    "Nigeria",
+    "Canada - Quebec"
   ],
   "crawl": {
     "depth": 3,

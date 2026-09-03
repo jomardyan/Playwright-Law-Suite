@@ -152,26 +152,47 @@ The engine enforces three properties that keep an exception honest:
 
 ## Included regulatory packs
 
-| Pack | Regulation | Jurisdiction | Applies from |
-| --- | --- | --- | --- |
-| `eu-gdpr-eprivacy` | GDPR / ePrivacy Directive | European Union | 2018-05-25 |
-| `eu-accessibility-act` | European Accessibility Act (Dir. (EU) 2019/882) / EN 301 549 | European Union | 2025-06-28 |
-| `eu-ai-act-transparency` | AI Act (Reg. (EU) 2024/1689) Art. 50 transparency | European Union | 2026-08-02 |
-| `eu-consumer-rights` | Consumer Rights Directive (incl. the Art. 11a withdrawal function) / UCPD / DSA Art. 25 | European Union | 2026-06-19 |
-| `wcag-accessibility` | WCAG 2.2 | Global | 2023-10-05 |
-| `global-data-security` | Security of processing (transport, headers, cookie attributes) | Global | 2018-05-25 |
-| `us-ca-ccpa-cpra` | CCPA / CPRA (+ COPPA hook) | United States - California | 2023-01-01 |
-| `us-state-privacy` | US state privacy laws - universal opt-out (GPC) handling | United States - multi-state | 2026-01-01 |
-| `uk-gdpr-pecr` | UK GDPR / PECR | United Kingdom | 2021-01-01 |
-| `au-privacy-dda` | Privacy Act / APPs / DDA | Australia | 2014-03-12 |
-| `br-lgpd` | LGPD | Brazil | 2020-09-18 |
-| `ca-pipeda` | PIPEDA | Canada | 2001-01-01 |
-| `jp-appi` | APPI | Japan | 2022-04-01 |
-| `in-dpdp` | DPDP Act 2023 + DPDP Rules 2025 | India | 2027-05-13 |
+| Pack | Regulation | Jurisdiction |
+| --- | --- | --- |
+| `eu-gdpr-eprivacy` | GDPR / ePrivacy Directive | European Union |
+| `eu-accessibility-act` | European Accessibility Act / EN 301 549 | European Union |
+| `eu-ai-act-transparency` | AI Act Art. 50 transparency | European Union |
+| `eu-consumer-rights` | Consumer Rights Directive / UCPD / DSA Art. 25 | European Union |
+| `uk-gdpr-pecr` | UK GDPR / PECR | United Kingdom |
+| `ch-fadp` | revised Federal Act on Data Protection | Switzerland |
+| `us-ca-ccpa-cpra` | CCPA / CPRA (+ COPPA hook) | United States - California |
+| `us-state-privacy` | State comprehensive privacy laws (universal opt-out) | United States - multi-state |
+| `us-ada-title-ii` | ADA Title II web rule (28 CFR Part 35, Subpart H) | United States - public entities |
+| `ca-pipeda` | PIPEDA | Canada |
+| `ca-qc-law25` | Quebec Law 25 | Canada - Quebec |
+| `br-lgpd` | LGPD | Brazil |
+| `au-privacy-dda` | Privacy Act / APPs / DDA | Australia |
+| `jp-appi` | APPI | Japan |
+| `kr-pipa` | PIPA | South Korea |
+| `cn-pipl` | PIPL | China |
+| `in-dpdp` | DPDP Act 2023 and Rules 2025 | India |
+| `sg-pdpa` | PDPA 2012 | Singapore |
+| `th-pdpa` | PDPA B.E. 2562 | Thailand |
+| `za-popia` | POPIA | South Africa |
+| `sa-pdpl` | PDPL | Saudi Arabia |
+| `ng-ndpa` | Nigeria Data Protection Act 2023 | Nigeria |
+| `wcag-accessibility` | WCAG 2.2 | Global |
+| `global-data-security` | Security of processing (cross-regime) | Global |
 
-The `Applies from` column is the date the pack's obligations bite, not the
-date the pack was written. A pack whose date is in the future still runs, so
-a team can see the work ahead of a deadline rather than after it.
+Packs are not interchangeable templates. Where a regime genuinely differs,
+the pack differs:
+
+- **Switzerland** uses the FDPIC's tiered cookie model - only advertising and
+  profiling cookies need opt-in, so `ch-fadp` does not report analytics the
+  way an EU pack would.
+- **Singapore** has no ePrivacy-style cookie rule, so `sg-pdpa` checks the
+  notification obligation rather than demanding a consent banner.
+- **Quebec** requires confidentiality *by default*, so `ca-qc-law25` treats
+  tracking that is live on arrival as a failure in itself.
+- **China** requires *separate* consent for several purposes, so a single
+  bundled "accept all" fails `cn-pipl` even where it would satisfy the GDPR.
+- **ADA Title II** adopts WCAG 2.1 AA specifically, so `us-ada-title-ii`
+  excludes 2.2-only criteria, and applies only to public-sector targets.
 
 This is an extensible starting library, not a claim that every law in every
 country is fully implemented - see `src/packs/helpers.ts` and `AGENTS.md`
@@ -860,6 +881,7 @@ Bundled profiles:
 | `eu-ecommerce` | GDPR/ePrivacy focused EU e-commerce scan. |
 | `us-multistate-privacy` | CCPA/CPRA plus the multi-state universal opt-out (GPC) pack. |
 | `us-ca-consumer` | California-only consumer scan. |
+| `apac-privacy` | China, South Korea, Japan, Singapore, Thailand, India and Australia. |
 | `global-multi-market` | Every jurisdiction pack, for a service sold worldwide. |
 
 ## CI integration

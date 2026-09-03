@@ -23,8 +23,17 @@ export const CANONICAL_JURISDICTIONS = {
   AU: "Australia",
   BR: "Brazil",
   CA: "Canada",
+  CA_QC: "Canada - Quebec",
   JP: "Japan",
   IN: "India",
+  CN: "China",
+  KR: "South Korea",
+  CH: "Switzerland",
+  TH: "Thailand",
+  SG: "Singapore",
+  ZA: "South Africa",
+  SA: "Saudi Arabia",
+  NG: "Nigeria",
 } as const;
 
 export type CanonicalJurisdiction = (typeof CANONICAL_JURISDICTIONS)[keyof typeof CANONICAL_JURISDICTIONS];
@@ -93,6 +102,28 @@ export const JURISDICTION_ALIASES: Record<string, CanonicalJurisdiction> = {
   bharat: "India",
   dpdp: "India",
   "privacy act": "Australia",
+  // Newly covered markets, by the names people actually type.
+  prc: "China",
+  "peoples republic of china": "China",
+  "people's republic of china": "China",
+  pipl: "China",
+  korea: "South Korea",
+  "republic of korea": "South Korea",
+  pipa: "South Korea",
+  swiss: "Switzerland",
+  schweiz: "Switzerland",
+  suisse: "Switzerland",
+  fadp: "Switzerland",
+  quebec: "Canada - Quebec",
+  "québec": "Canada - Quebec",
+  "law 25": "Canada - Quebec",
+  thai: "Thailand",
+  popia: "South Africa",
+  rsa: "South Africa",
+  ksa: "Saudi Arabia",
+  "kingdom of saudi arabia": "Saudi Arabia",
+  ndpa: "Nigeria",
+  ndpr: "Nigeria",
 };
 
 export type SignalKind =
@@ -172,6 +203,15 @@ export const CCTLD_MARKETS: Record<string, CanonicalJurisdiction> = {
   jp: CANONICAL_JURISDICTIONS.JP,
   in: CANONICAL_JURISDICTIONS.IN,
   us: CANONICAL_JURISDICTIONS.US,
+  cn: CANONICAL_JURISDICTIONS.CN,
+  kr: CANONICAL_JURISDICTIONS.KR,
+  ch: CANONICAL_JURISDICTIONS.CH,
+  th: CANONICAL_JURISDICTIONS.TH,
+  sg: CANONICAL_JURISDICTIONS.SG,
+  za: CANONICAL_JURISDICTIONS.ZA,
+  ng: CANONICAL_JURISDICTIONS.NG,
+  // .sa is Saudi Arabia's ccTLD; the alias map handles the spelled-out name.
+  sa: CANONICAL_JURISDICTIONS.SA,
 };
 
 /**
@@ -207,6 +247,12 @@ export const LANGUAGE_MARKETS: Record<string, CanonicalJurisdiction> = {
   ro: CANONICAL_JURISDICTIONS.EU,
   ja: CANONICAL_JURISDICTIONS.JP,
   hi: CANONICAL_JURISDICTIONS.IN,
+  ko: CANONICAL_JURISDICTIONS.KR,
+  th: CANONICAL_JURISDICTIONS.TH,
+  // Chinese is written in several markets, so only the mainland-simplified
+  // tag is mapped, and only weakly.
+  zh: CANONICAL_JURISDICTIONS.CN,
+  af: CANONICAL_JURISDICTIONS.ZA,
 };
 
 /**
@@ -223,6 +269,14 @@ export const CURRENCY_MARKETS: Array<{ pattern: RegExp; jurisdiction: CanonicalJ
   { pattern: /R\$|\bBRL\b/, jurisdiction: CANONICAL_JURISDICTIONS.BR, label: "Brazilian real prices" },
   { pattern: /₹|\bINR\b/, jurisdiction: CANONICAL_JURISDICTIONS.IN, label: "Indian rupee prices" },
   { pattern: /¥|\bJPY\b|円/, jurisdiction: CANONICAL_JURISDICTIONS.JP, label: "Japanese yen prices" },
+  { pattern: /\bCNY\b|\bRMB\b|元(?!素)/, jurisdiction: CANONICAL_JURISDICTIONS.CN, label: "Chinese yuan prices" },
+  { pattern: /₩|\bKRW\b|원/, jurisdiction: CANONICAL_JURISDICTIONS.KR, label: "Korean won prices" },
+  { pattern: /\bCHF\b|\bFr\.\s?\d/, jurisdiction: CANONICAL_JURISDICTIONS.CH, label: "Swiss franc prices" },
+  { pattern: /฿|\bTHB\b/, jurisdiction: CANONICAL_JURISDICTIONS.TH, label: "Thai baht prices" },
+  { pattern: /\bSGD\b|\bS\$/, jurisdiction: CANONICAL_JURISDICTIONS.SG, label: "Singapore dollar prices" },
+  { pattern: /\bZAR\b|\bR\d/, jurisdiction: CANONICAL_JURISDICTIONS.ZA, label: "South African rand prices" },
+  { pattern: /\bSAR\b|﷼/, jurisdiction: CANONICAL_JURISDICTIONS.SA, label: "Saudi riyal prices" },
+  { pattern: /₦|\bNGN\b/, jurisdiction: CANONICAL_JURISDICTIONS.NG, label: "Nigerian naira prices" },
 ];
 
 /**
@@ -252,6 +306,14 @@ export const REGULATION_MENTIONS: Array<{ pattern: RegExp; jurisdiction: Canonic
   { pattern: /\bAPPI\b|個人情報保護法/i, jurisdiction: CANONICAL_JURISDICTIONS.JP, label: "APPI" },
   { pattern: /\bDPDP\b|Digital Personal Data Protection Act/i, jurisdiction: CANONICAL_JURISDICTIONS.IN, label: "the DPDP Act" },
   { pattern: /Privacy Act 1988|Australian Privacy Principles/i, jurisdiction: CANONICAL_JURISDICTIONS.AU, label: "the Australian Privacy Act" },
+  { pattern: /\bPIPL\b|个人信息保护法/i, jurisdiction: CANONICAL_JURISDICTIONS.CN, label: "PIPL" },
+  { pattern: /\bPIPA\b|개인정보 ?보호법/i, jurisdiction: CANONICAL_JURISDICTIONS.KR, label: "PIPA" },
+  { pattern: /\bnFADP\b|revFADP|Datenschutzgesetz|\bFADP\b|\bDSG\b/i, jurisdiction: CANONICAL_JURISDICTIONS.CH, label: "the Swiss FADP" },
+  { pattern: /\bLaw ?25\b|Loi ?25|Commission d'acc[eè]s [aà] l'information/i, jurisdiction: CANONICAL_JURISDICTIONS.CA_QC, label: "Quebec Law 25" },
+  { pattern: /\bPOPIA\b|Protection of Personal Information Act/i, jurisdiction: CANONICAL_JURISDICTIONS.ZA, label: "POPIA" },
+  { pattern: /\bSDAIA\b|Saudi Personal Data Protection/i, jurisdiction: CANONICAL_JURISDICTIONS.SA, label: "the Saudi PDPL" },
+  { pattern: /\bNDPA\b|\bNDPR\b|Nigeria Data Protection/i, jurisdiction: CANONICAL_JURISDICTIONS.NG, label: "the Nigeria Data Protection Act" },
+  { pattern: /\bPDPC\b|Personal Data Protection Act B\.E\./i, jurisdiction: CANONICAL_JURISDICTIONS.TH, label: "the Thai PDPA" },
 ];
 
 /**

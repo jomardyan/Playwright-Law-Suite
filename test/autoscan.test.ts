@@ -216,6 +216,15 @@ describe("detected jurisdictions load the packs they name", () => {
     { jurisdiction: CANONICAL_JURISDICTIONS.CA, expectPack: "ca-pipeda" },
     { jurisdiction: CANONICAL_JURISDICTIONS.JP, expectPack: "jp-appi" },
     { jurisdiction: CANONICAL_JURISDICTIONS.IN, expectPack: "in-dpdp" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.CN, expectPack: "cn-pipl" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.KR, expectPack: "kr-pipa" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.CH, expectPack: "ch-fadp" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.CA_QC, expectPack: "ca-qc-law25" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.TH, expectPack: "th-pdpa" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.SG, expectPack: "sg-pdpa" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.ZA, expectPack: "za-popia" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.SA, expectPack: "sa-pdpl" },
+    { jurisdiction: CANONICAL_JURISDICTIONS.NG, expectPack: "ng-ndpa" },
   ];
 
   for (const { jurisdiction, expectPack } of expectations) {
@@ -226,6 +235,42 @@ describe("detected jurisdictions load the packs they name", () => {
       expect(packs.map((p) => p.id)).toContain(expectPack);
     });
   }
+
+  it("keeps regimes with similar names apart", async () => {
+    // "South Africa"/"South Korea" and the PIPA/PIPL/POPIA/PDPA/PDPL family
+    // of acronyms are easy to cross-match with a careless regex.
+    const cases: Array<[string, string, string[]]> = [
+      [CANONICAL_JURISDICTIONS.ZA, "za-popia", ["kr-pipa", "th-pdpa", "sa-pdpl"]],
+      [CANONICAL_JURISDICTIONS.KR, "kr-pipa", ["za-popia", "cn-pipl", "th-pdpa"]],
+      [CANONICAL_JURISDICTIONS.CN, "cn-pipl", ["kr-pipa", "sa-pdpl"]],
+      [CANONICAL_JURISDICTIONS.SA, "sa-pdpl", ["za-popia", "th-pdpa", "sg-pdpa"]],
+      [CANONICAL_JURISDICTIONS.TH, "th-pdpa", ["sg-pdpa", "sa-pdpl"]],
+      [CANONICAL_JURISDICTIONS.SG, "sg-pdpa", ["th-pdpa", "za-popia"]],
+    ];
+    for (const [jurisdiction, expected, forbidden] of cases) {
+      const ids = (
+        await new PackLoader().load(loadConfigFromObject({ jurisdictions: [jurisdiction] }))
+      ).map((p) => p.id);
+      expect(ids, jurisdiction).toContain(expected);
+      for (const other of forbidden) {
+        expect(ids, `${jurisdiction} must not load ${other}`).not.toContain(other);
+      }
+    }
+  });
+
+  it("loads both the federal and provincial pack for Quebec, and only the federal one for Canada", async () => {
+    const quebec = (
+      await new PackLoader().load(loadConfigFromObject({ jurisdictions: [CANONICAL_JURISDICTIONS.CA_QC] }))
+    ).map((p) => p.id);
+    expect(quebec).toContain("ca-qc-law25");
+    expect(quebec).toContain("ca-pipeda");
+
+    const canada = (
+      await new PackLoader().load(loadConfigFromObject({ jurisdictions: [CANONICAL_JURISDICTIONS.CA] }))
+    ).map((p) => p.id);
+    expect(canada).toContain("ca-pipeda");
+    expect(canada).not.toContain("ca-qc-law25");
+  });
 
   it("does not confuse Canada with California", async () => {
     const canada = await new PackLoader().load(

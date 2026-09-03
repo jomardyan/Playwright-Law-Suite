@@ -16,6 +16,16 @@ import { euConsumerRightsPack } from "./eu-consumer-rights/pack.js";
 import { usStatePrivacyPack } from "./us-state-privacy/pack.js";
 import { inDpdpPack } from "./in-dpdp/pack.js";
 import { globalDataSecurityPack } from "./global-data-security/pack.js";
+import { cnPiplPack } from "./cn-pipl/pack.js";
+import { krPipaPack } from "./kr-pipa/pack.js";
+import { chFadpPack } from "./ch-fadp/pack.js";
+import { caQcLaw25Pack } from "./ca-qc-law25/pack.js";
+import { thPdpaPack } from "./th-pdpa/pack.js";
+import { sgPdpaPack } from "./sg-pdpa/pack.js";
+import { zaPopiaPack } from "./za-popia/pack.js";
+import { saPdplPack } from "./sa-pdpl/pack.js";
+import { ngNdpaPack } from "./ng-ndpa/pack.js";
+import { usAdaTitleIiPack } from "./us-ada-title-ii/pack.js";
 
 /**
  * The engine never contains country-specific legal logic; it only knows how
@@ -38,6 +48,16 @@ const BUILT_IN_PACKS: RegulatoryPack[] = [
   usStatePrivacyPack,
   inDpdpPack,
   globalDataSecurityPack,
+  cnPiplPack,
+  krPipaPack,
+  chFadpPack,
+  caQcLaw25Pack,
+  thPdpaPack,
+  sgPdpaPack,
+  zaPopiaPack,
+  saPdplPack,
+  ngNdpaPack,
+  usAdaTitleIiPack,
 ];
 
 export class PackLoader {

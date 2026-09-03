@@ -1,0 +1,46 @@
+{
+  "extends": "global-baseline",
+  "jurisdictions": [
+    "China",
+    "South Korea",
+    "Japan",
+    "Singapore",
+    "Thailand",
+    "India",
+    "Australia"
+  ],
+  "customerMarkets": [
+    "China",
+    "South Korea",
+    "Japan",
+    "Singapore",
+    "Thailand",
+    "India",
+    "Australia"
+  ],
+  "regulatoryPacks": [
+    "cn-pipl",
+    "kr-pipa",
+    "jp-appi",
+    "sg-pdpa",
+    "th-pdpa",
+    "in-dpdp",
+    "au-privacy-dda",
+    "wcag-accessibility",
+    "global-data-security"
+  ],
+  "consent": {
+    "enabled": true,
+    "testWithdrawal": true,
+    "probeGlobalPrivacyControl": true
+  },
+  "reporting": {
+    "formats": [
+      "json",
+      "html",
+      "markdown",
+      "console"
+    ],
+    "outputDir": "./universcan-report"
+  }
+}
