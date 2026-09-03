@@ -1,11 +1,11 @@
-import { classifyDomain } from "../../utils/domainClassifier.js";
+import { classifyDomain, isNonEssentialTrackingCategory } from "../../utils/domainClassifier.js";
+import { findTrackingStorage } from "../../utils/trackerStorage.js";
 import type { RegulatoryPack, Rule } from "../../engine/types.js";
 import { buildFinding, defineRule } from "../helpers.js";
 
 const PACK_ID = "eu-gdpr-eprivacy";
 const REGULATION = "GDPR / ePrivacy Directive";
 const JURISDICTION = "European Union";
-const TRACKING_CATEGORIES = new Set(["analytics", "advertising", "session-recording"]);
 
 const trackingBeforeConsent = defineRule({
   id: "gdpr-eprivacy-tracking-before-consent",
@@ -19,10 +19,9 @@ const trackingBeforeConsent = defineRule({
     const findings = [];
     for (const page of context.pages) {
       if (!page.consentFlow) continue;
-      const offenders = page.consentFlow.requestsBeforeAnyConsentAction.filter((req) => {
-        const { category } = classifyDomain(req.domain);
-        return TRACKING_CATEGORIES.has(category);
-      });
+      const offenders = page.consentFlow.requestsBeforeAnyConsentAction.filter((req) =>
+        isNonEssentialTrackingCategory(classifyDomain(req.domain).category)
+      );
       for (const offender of offenders) {
         findings.push(
           buildFinding(trackingBeforeConsent, PACK_ID, REGULATION, JURISDICTION, {
@@ -32,6 +31,29 @@ const trackingBeforeConsent = defineRule({
             observedBehavior: `Request to ${offender.domain} (${classifyDomain(offender.domain).category}) observed before any consent action.`,
             expectedBehavior: "No non-essential tracking requests before consent is given.",
             evidence: [context.evidence.requestLog(`Pre-consent request to ${offender.domain}`, [offender])],
+          })
+        );
+      }
+
+      // Art. 5(3) ePrivacy prohibits the *storing of, or access to,*
+      // information on the visitor's terminal equipment without consent. A
+      // first-party analytics identifier written by a server-side tag never
+      // shows up as a request to a tracker's domain, but it is the same act
+      // and the same provision.
+      const beforeConsent = page.consentFlow.states.find((state) => state.consentState === "before-consent");
+      const storageOffenders = beforeConsent
+        ? findTrackingStorage(beforeConsent).filter((entry) => isNonEssentialTrackingCategory(entry.category))
+        : [];
+      for (const entry of storageOffenders) {
+        findings.push(
+          buildFinding(trackingBeforeConsent, PACK_ID, REGULATION, JURISDICTION, {
+            status: "violation",
+            affectedUrl: page.url,
+            affectedElement: `${entry.mechanism}: ${entry.key}`,
+            observedBehavior: `${entry.service} wrote the identifier "${entry.key}" to ${entry.mechanism} before any consent action.`,
+            expectedBehavior:
+              "Nothing but strictly necessary information is stored on, or read from, the visitor's device before consent is given.",
+            evidence: [context.evidence.note(`Pre-consent ${entry.mechanism} entry`, entry)],
           })
         );
       }
@@ -66,12 +88,23 @@ const rejectControlPresent = defineRule({
           })
         );
       } else if (!page.consentFlow.bannerAcceptControlFound && !page.consentFlow.bannerRejectControlFound) {
+        // Two different situations, and collapsing them loses the finding
+        // that matters. Banner markup with no recognised control is a
+        // detection limit; no banner markup at all, on a site that sets
+        // non-essential cookies, is the site's own gap.
+        const bannerSeen = page.consentFlow.bannerDetected;
         findings.push(
           buildFinding(rejectControlPresent, PACK_ID, REGULATION, JURISDICTION, {
             status: "manual-review",
             affectedUrl: page.url,
-            observedBehavior: "No consent banner controls were detected by the configured selector heuristics.",
+            observedBehavior:
+              bannerSeen === true
+                ? "Consent banner markup was present, but neither an accept nor a reject control could be identified within it by the configured heuristics."
+                : bannerSeen === false
+                  ? "No consent banner markup and no consent controls were found on this page."
+                  : "No consent banner controls were detected by the configured selector heuristics; whether a banner was present was not established.",
             expectedBehavior: "A consent banner with accept/reject controls should be present if the site sets non-essential cookies.",
+            evidence: [context.evidence.note("Consent banner detection", { bannerDetected: bannerSeen ?? "not-established" })],
             manualReviewRequired: true,
           })
         );

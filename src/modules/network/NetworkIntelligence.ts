@@ -1,4 +1,4 @@
-import { classifyDomain } from "../../utils/domainClassifier.js";
+import { classifyDomain, isSameSite, normalizeHost } from "../../utils/domainClassifier.js";
 import type { CapturedState, ThirdPartyServiceRecord } from "../../engine/types.js";
 
 /**
@@ -6,14 +6,19 @@ import type { CapturedState, ThirdPartyServiceRecord } from "../../engine/types.
  * the first page/consent-state it was observed under, classified via the
  * static domain map. This is the "privacy technology inventory" the spec
  * calls for - a practical map of what talks to the outside world and when.
+ *
+ * "Third party" is decided on the registrable domain, not the literal
+ * hostname: `cdn.example.com` serving `www.example.com` is the same operator,
+ * and listing it as an external recipient of personal data both overstates
+ * the transfer surface and buries the recipients that are genuinely external.
  */
 export class NetworkIntelligence {
   build(pageUrl: string, states: CapturedState[]): ThirdPartyServiceRecord[] {
-    const pageOrigin = (() => {
+    const pageHost = (() => {
       try {
-        return new URL(pageUrl).hostname;
+        return normalizeHost(new URL(pageUrl).hostname);
       } catch {
-        return pageUrl;
+        return normalizeHost(pageUrl);
       }
     })();
 
@@ -21,7 +26,7 @@ export class NetworkIntelligence {
 
     for (const state of states) {
       for (const request of state.thirdPartyRequests) {
-        if (request.domain === pageOrigin) continue;
+        if (isSameSite(request.domain, pageHost)) continue;
         const key = `${request.domain}|${state.consentState}`;
         if (seen.has(key)) continue;
         const classification = classifyDomain(request.domain);

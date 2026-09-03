@@ -1,4 +1,4 @@
-import { classifyDomain } from "../../utils/domainClassifier.js";
+import { classifyDomain, isNonEssentialTrackingCategory } from "../../utils/domainClassifier.js";
 import type { RegulatoryPack, Rule } from "../../engine/types.js";
 import { buildFinding, defineRule } from "../helpers.js";
 import {
@@ -43,7 +43,7 @@ const cookieConsentPosture = defineRule({
     const findings = [];
     for (const page of context.pages) {
       const trackers = (page.consentFlow?.requestsBeforeAnyConsentAction ?? []).filter((request) =>
-        ["analytics", "advertising", "session-recording"].includes(classifyDomain(request.domain).category)
+        isNonEssentialTrackingCategory(classifyDomain(request.domain).category)
       );
       if (trackers.length === 0) continue;
       const notified = page.privacyDocuments.some(

@@ -172,6 +172,10 @@ export class ScanEngine {
     this.progress.finish(`${routes.length} route(s) to scan`);
     logger.debug(`Discovered ${routes.length} route(s) to scan`);
 
+    // Bounded by the navigation timeout so a slow target cannot double the
+    // time a scan takes, and never longer than five seconds.
+    const settleTimeoutMs = Math.min(5_000, browserManager.navigationTimeoutMs);
+
     const accessibilityScanner = new AccessibilityScanner();
     const formsScanner = new FormsScanner();
     const privacyScanner = new PrivacyDocumentScanner();
@@ -219,6 +223,14 @@ export class ScanEngine {
         }
         continue;
       }
+
+      // `domcontentloaded` returns before a client-rendered page has painted
+      // its footer, its forms or its consent banner. Collecting signals at
+      // that instant reported single-page applications as having no privacy
+      // link, no forms and no controls - findings about the scanner's timing,
+      // not about the site. The wait is bounded and failure-tolerant: a page
+      // that never goes idle (a poller, a live feed) is scanned as it stands.
+      await page.waitForLoadState("networkidle", { timeout: settleTimeoutMs }).catch(() => undefined);
 
       const securityHeaders = await securityScanner.collect(page, response).catch((error) => {
         logger.warn(`Security header collection failed for ${route.url}`, error);

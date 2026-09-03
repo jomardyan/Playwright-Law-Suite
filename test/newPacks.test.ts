@@ -201,6 +201,7 @@ describe("eu-consumer-rights pack", () => {
     autoRenewalDisclosures: [],
     urgencyClaims: [],
     traderIdentityLinked: true,
+    surfaceEvidence: [],
     ...overrides,
   });
 
@@ -247,7 +248,8 @@ describe("eu-consumer-rights pack", () => {
             usesHttps: true,
             actionIsThirdParty: false,
             fields: [],
-            consentCheckboxes: [{ label: "Sign me up for marketing emails", preChecked: true, purposeBundled: false }],
+            scope: "form" as const,
+            consentCheckboxes: [{ label: "Sign me up for marketing emails", preChecked: true, purposeBundled: false, hidden: false }],
           },
         ],
       }),
@@ -422,7 +424,8 @@ describe("global-data-security pack", () => {
             method: "post",
             usesHttps: false,
             actionIsThirdParty: false,
-            fields: [{ name: "email", type: "email", category: "email", required: true, autocomplete: null }],
+            fields: [{ name: "email", type: "email", category: "email", required: true, autocomplete: null, hidden: false }],
+            scope: "form" as const,
             consentCheckboxes: [],
           },
         ],
