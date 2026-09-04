@@ -34,7 +34,7 @@
     "axe-core": "^4.10.0",
     "commander": "^12.1.0",
     "fast-xml-parser": "^4.5.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^5.4.1",
     "playwright": "^1.48.0"
   },
   "devDependencies": {
