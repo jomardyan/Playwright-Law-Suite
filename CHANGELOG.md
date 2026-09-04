@@ -13,6 +13,11 @@ released artifacts.
 
 ### Changed
 
+- The landing page has moved to its own repository,
+  [universcan-website](https://github.com/jomardyan/universcan-website), so
+  this repository is the scanner alone and its dependency tree never resolves
+  a web framework.
+
 - The README leads with a quick start and an accurate summary of what the
   scanner ships, rather than an abstract and a table of contents. The
   duplicated container, library and CI sections are merged into one each, and

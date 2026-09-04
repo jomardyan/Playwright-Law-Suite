@@ -50,7 +50,9 @@ Requires Node 20 or newer. Also available as a
 [GitHub Action](#as-a-github-action) and a
 [container image](#as-a-container).
 
-**New here?** The [Tutorial](#tutorial) walks from a first scan to a CI gate.
+**New here?** The [Tutorial](#tutorial) walks from a first scan to a CI gate,
+or see [universcan.lolisoft.eu](https://universcan.lolisoft.eu) for an
+overview and a shorter getting-started guide.
 
 ## Contents
 
@@ -1293,6 +1295,7 @@ pass, and how to write a rule.
 | Reporting a vulnerability | [SECURITY.md](SECURITY.md) |
 | Release history | [CHANGELOG.md](CHANGELOG.md) |
 | Code of conduct | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
+| Website | [universcan.lolisoft.eu](https://universcan.lolisoft.eu) - source in [universcan-website](https://github.com/jomardyan/universcan-website) |
 | Package | [npmjs.com/package/universcan](https://www.npmjs.com/package/universcan) |
 | Container image | [ghcr.io/jomardyan/playwright-law-suite](https://github.com/jomardyan/Playwright-Law-Suite/pkgs/container/playwright-law-suite) |
 | Issues | [github.com/jomardyan/Playwright-Law-Suite/issues](https://github.com/jomardyan/Playwright-Law-Suite/issues) |

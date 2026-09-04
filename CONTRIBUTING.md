@@ -87,6 +87,17 @@ README for that.
 - Update the README when you change a flag, a config key, or an exit code.
 - Add a `CHANGELOG.md` entry under `## Unreleased`.
 
+## The website is a separate repository
+
+The landing page at [universcan.lolisoft.eu](https://universcan.lolisoft.eu)
+lives in [jomardyan/universcan-website](https://github.com/jomardyan/universcan-website),
+not here. It is kept apart deliberately: this repository is the published npm
+package, and its dependency tree should never have to resolve a web framework.
+
+If a change here alters something the site states - the pack count, the rule
+count, the jurisdiction list, a flag shown in an example - the site needs the
+same change. Its README documents how to re-derive those figures from the CLI.
+
 ## Reporting a bug
 
 A scanner bug report is much more useful with the target attached. Please
