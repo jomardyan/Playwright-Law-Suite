@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { existsSync, mkdtempSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -7,12 +7,7 @@ import { join } from "node:path";
 import { ScanEngine } from "../src/engine/ScanEngine.js";
 import { detectScope } from "../src/engine/AutoScan.js";
 import { loadConfigFromObject } from "../src/config/loader.js";
-
-const CHROMIUM_PATH = "/opt/pw-browsers/chromium";
-const hasLocalChromium = existsSync(CHROMIUM_PATH);
-if (hasLocalChromium && !process.env.UNIVERSCAN_CHROMIUM_PATH) {
-  process.env.UNIVERSCAN_CHROMIUM_PATH = CHROMIUM_PATH;
-}
+import { hasLocalChromium } from "./chromium.js";
 
 /** A shop that declares an EU/UK audience several different ways. */
 const EU_HOME = `<!doctype html>

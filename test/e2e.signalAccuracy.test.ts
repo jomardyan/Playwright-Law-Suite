@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Page } from "playwright";
@@ -10,12 +9,7 @@ import { PrivacyDocumentScanner } from "../src/modules/privacy/PrivacyDocumentSc
 import { CookieScanner } from "../src/modules/cookies/CookieScanner.js";
 import { AccessibilityScanner } from "../src/modules/accessibility/AccessibilityScanner.js";
 import { DEFAULT_CONFIG } from "../src/config/schema.js";
-
-const CHROMIUM_PATH = "/opt/pw-browsers/chromium";
-const hasLocalChromium = existsSync(CHROMIUM_PATH);
-if (hasLocalChromium && !process.env.UNIVERSCAN_CHROMIUM_PATH) {
-  process.env.UNIVERSCAN_CHROMIUM_PATH = CHROMIUM_PATH;
-}
+import { hasLocalChromium } from "./chromium.js";
 
 /**
  * A sign-up page written the way modern applications actually are: the

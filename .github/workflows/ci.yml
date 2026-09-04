@@ -1,0 +1,74 @@
+name: CI
+
+# Builds and tests UniVerscan itself. This is the check that gates pull
+# requests; universcan.yml scans a deployed site and only runs where a
+# target has been configured.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Keyed on the lockfile, because the lockfile is what pins the
+      # Playwright version and therefore the browser revision.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # The end-to-end suites launch a real browser against a local fixture
+      # server, so they need one installed to be worth running at all.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # UNIVERSCAN_REQUIRE_CHROMIUM turns a missing browser into a failed
+      # suite rather than a quietly reduced one.
+      - name: Test
+        run: npm test
+        env:
+          UNIVERSCAN_REQUIRE_CHROMIUM: "1"
+
+      # Exercises the published entrypoint from the build output, which the
+      # unit tests reach through src/ and so would not catch.
+      - name: Smoke-check the built CLI
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js packs
+          node dist/cli.js doctor
+
+      - name: Check the package contents
+        run: npm pack --dry-run

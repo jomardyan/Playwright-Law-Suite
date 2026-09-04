@@ -1,9 +1,15 @@
 name: UniVerscan Compliance Scan
 
-# Example CI integration. Critical/high findings fail the build; manual
-# review items are surfaced as warnings via the JUnit "skipped" summary, the
-# job summary, and the uploaded HTML/JSON/SARIF reports, but do not block the
+# Example CI integration, and the monitoring scan for this repository's own
+# staging deployment. Critical/high findings fail the build; manual review
+# items are surfaced as warnings via the JUnit "skipped" summary, the job
+# summary, and the uploaded HTML/JSON/SARIF reports, but do not block the
 # pipeline on their own.
+#
+# The scan needs a deployed site to point at, which is read from the
+# STAGING_URL repository variable. Every job below is gated on it, so where
+# no target has been configured the workflow reports nothing rather than
+# failing on an empty --url. CI for the scanner's own code is in ci.yml.
 
 on:
   pull_request:
@@ -13,11 +19,46 @@ on:
 
 permissions:
   contents: read
-  security-events: write # required to upload the SARIF report
+
+concurrency:
+  group: universcan-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  compliance-scan:
+  # A configured target is a repository-level condition, not a per-step one,
+  # so it is resolved once here and the scan jobs depend on the answer.
+  target:
     runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        run: |
+          if [ -n "$STAGING_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "No STAGING_URL repository variable is set, so there is no deployment to scan." \
+              >> "$GITHUB_STEP_SUMMARY"
+            echo "Set it under Settings > Secrets and variables > Actions > Variables to enable this scan." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  compliance-scan:
+    needs: target
+    if: needs.target.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # required to upload the SARIF report
+      checks: write # required to publish the JUnit check run
+    env:
+      # A pull request from a fork and one opened by Dependabot both run with
+      # a read-only token. Dependabot pushes its branch to this repository,
+      # so the fork check alone does not cover it.
+      TOKEN_CAN_WRITE: ${{ github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,12 +85,16 @@ jobs:
             --out ./universcan-report \
             --fail-on critical,high
 
+      # Each reporting step below runs even when the scan failed the build,
+      # which is the case they exist for, but is skipped when the scan
+      # produced no file at all: reporting a missing report as a second
+      # failure buries the real one.
       - name: Add findings to the job summary
-        if: always()
+        if: always() && hashFiles('universcan-report/report.md') != ''
         run: cat universcan-report/report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload compliance report
-        if: always()
+        if: always() && hashFiles('universcan-report/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: universcan-report
@@ -58,15 +103,19 @@ jobs:
       # Surfaces findings as code-scanning alerts. Suppressed findings are
       # uploaded too, carrying the documented reason, so an accepted risk
       # stays visible instead of disappearing from the security tab.
+      #
+      # The two steps that need a writable token are skipped where the
+      # token is read-only, rather than left to fail with a 403. The report
+      # artifact above still carries the findings in that case.
       - name: Upload SARIF to code scanning
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && env.TOKEN_CAN_WRITE == 'true' && hashFiles('universcan-report/report.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: universcan-report/report.sarif
           category: universcan
 
       - name: Publish JUnit summary
-        if: always()
+        if: always() && env.TOKEN_CAN_WRITE == 'true' && hashFiles('universcan-report/report.junit.xml') != ''
         uses: dorny/test-reporter@v1
         with:
           name: UniVerscan Findings
@@ -78,7 +127,8 @@ jobs:
   # the result against the last report published from the default branch,
   # failing only on findings this change introduced.
   regression-diff:
-    if: github.event_name == 'pull_request'
+    needs: target
+    if: github.event_name == 'pull_request' && needs.target.outputs.configured == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -104,8 +154,11 @@ jobs:
           name: universcan-report
           path: ./universcan-baseline
 
+      # There is nothing to compare against until the default branch has
+      # published a report, so the first run on a fresh repository reports
+      # that rather than diffing against an absent baseline.
       - name: Scan and compare against the baseline
-        if: steps.baseline.outcome == 'success'
+        if: steps.baseline.outcome == 'success' && hashFiles('universcan-baseline/report.json') != ''
         run: |
           node dist/cli.js scan \
             --url "${{ vars.STAGING_URL }}" \
@@ -115,3 +168,11 @@ jobs:
             --baseline ./universcan-baseline/report.json \
             --fail-on-new \
             --fail-on critical,high | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Report a missing baseline
+        if: steps.baseline.outcome != 'success' || hashFiles('universcan-baseline/report.json') == ''
+        run: |
+          echo "No baseline report was found on ${{ github.event.repository.default_branch }}, so there is nothing to diff against yet." \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo "The first scan to complete on the default branch becomes the baseline for later pull requests." \
+            >> "$GITHUB_STEP_SUMMARY"

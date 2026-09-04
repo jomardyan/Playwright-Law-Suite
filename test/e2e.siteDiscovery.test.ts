@@ -1,17 +1,11 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Page } from "playwright";
 import { BrowserManager } from "../src/engine/BrowserManager.js";
 import { SiteDiscovery, canonicalizeRouteUrl } from "../src/engine/SiteDiscovery.js";
 import { loadConfigFromObject } from "../src/config/loader.js";
-
-const CHROMIUM_PATH = "/opt/pw-browsers/chromium";
-const hasLocalChromium = existsSync(CHROMIUM_PATH);
-if (hasLocalChromium && !process.env.UNIVERSCAN_CHROMIUM_PATH) {
-  process.env.UNIVERSCAN_CHROMIUM_PATH = CHROMIUM_PATH;
-}
+import { hasLocalChromium } from "./chromium.js";
 
 describe("canonicalizeRouteUrl", () => {
   it("drops the fragment, which never reaches the server", () => {

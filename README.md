@@ -463,7 +463,9 @@ count toward the gate; everything else still appears in every report.
 
 `.github/workflows/universcan.yml` wires this up: SARIF to code scanning,
 the Markdown report into the job summary, and a pull-request job that diffs
-against the default branch's last report. Nothing in it is
+against the default branch's last report. It reads its target from a
+`STAGING_URL` repository variable and skips itself when that is unset, so a
+clone does not fail on an empty `--url`. Nothing in it is
 GitHub-specific beyond those two upload steps - the same CLI runs unchanged
 under GitLab CI, Azure DevOps, or Jenkins.
 
@@ -1032,6 +1034,23 @@ fails on `critical`/`high` findings, surfaces `manual-review` items as
 warnings, writes the Markdown report into the job summary, uploads SARIF to
 code scanning, and runs a second job that diffs the pull request against the
 default branch's last report.
+
+Point it at a deployment before it can do any of that: set a `STAGING_URL`
+repository variable under **Settings > Secrets and variables > Actions >
+Variables**. Until it is set, every scan job skips and the run says so in
+its summary. Two further conditions are worth knowing when adapting the
+file:
+
+- A pull request from a fork, and one opened by Dependabot, runs with a
+  read-only token. Neither can write code-scanning results or check runs, so
+  the SARIF upload and the JUnit check run are skipped there; the uploaded
+  report artifact still carries every finding.
+- The diff job needs a baseline. The first scan to complete on the default
+  branch becomes it, so the job reports that it has nothing to compare
+  against until then.
+
+`.github/workflows/ci.yml` is separate and is not an example: it builds,
+typechecks and tests UniVerscan itself on Node 20 and 22.
 
 Nothing about the scanner is GitHub-specific. Under GitLab CI, Azure
 DevOps, or Jenkins, invoke `node dist/cli.js scan ...` as a build step and

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,12 +8,7 @@ import { ScanEngine } from "../src/engine/ScanEngine.js";
 import { loadConfigFromObject } from "../src/config/loader.js";
 import { writeReports } from "../src/reporters/index.js";
 import { diffReports } from "../src/engine/ReportDiff.js";
-
-const CHROMIUM_PATH = "/opt/pw-browsers/chromium";
-const hasLocalChromium = existsSync(CHROMIUM_PATH);
-if (hasLocalChromium && !process.env.UNIVERSCAN_CHROMIUM_PATH) {
-  process.env.UNIVERSCAN_CHROMIUM_PATH = CHROMIUM_PATH;
-}
+import { hasLocalChromium } from "./chromium.js";
 
 const HOME_HTML = `<!doctype html>
 <html lang="en">
