@@ -280,22 +280,36 @@ Every `universcan` command below then becomes `node dist/cli.js`. See
 
 </details>
 
-In a hurry? `node dist/cli.js init` walks you through the whole of Steps 2-4
+In a hurry? `universcan init` walks you through the whole of Steps 2-4
 interactively - it probes the site, proposes a scope, shows which packs that
 scope loads, and writes the config file. See
 [Interactive use](#interactive-use).
 
 ### Step 2 - Run your first scan
 
-> Don't know which jurisdictions apply? Skip to
-> [Autoscan](#autoscan-scanning-without-knowing-the-scope) and let the tool
-> propose a scope, then come back here.
+**Not sure which jurisdictions apply? Start with autoscan instead.**
 
-
-Start broad, with a single pack, so the output stays readable:
+Choosing the scope by hand is the hardest part of a first scan, and getting
+it wrong fails quietly: name too few markets and the packs that mattered
+never run, so the report comes back clean because nothing looked. Autoscan
+reads the market signals the site actually exposes and proposes the scope for
+you, showing its evidence before it scans anything:
 
 ```bash
-node dist/cli.js scan \
+universcan autoscan --url https://shop.example
+```
+
+It never applies an inferred scope silently. Every market it selects is
+printed with the signals behind it - hreflang alternates, currency, an
+Impressum, a named regulation - and a confidence score, so you can confirm or
+correct it. Add `--detect-only` to see that and stop without scanning. Full
+detail in [Autoscan](#autoscan-scanning-without-knowing-the-scope).
+
+Once you know the scope, or if you already did, name it explicitly. Start
+broad, with a single pack, so the output stays readable:
+
+```bash
+universcan scan \
   --url https://shop.example \
   --jurisdictions "European Union" \
   --sector e-commerce \
@@ -407,7 +421,7 @@ file. Create `universcan.config.json` in your project:
 ```
 
 ```bash
-node dist/cli.js scan --config universcan.config.json
+universcan scan --config universcan.config.json
 ```
 
 Two things to get right here:
@@ -435,8 +449,8 @@ cp -r universcan-report universcan-baseline
 
 # ... make the fix in your application ...
 
-node dist/cli.js scan --config universcan.config.json
-node dist/cli.js diff \
+universcan scan --config universcan.config.json
+universcan diff \
   --baseline ./universcan-baseline/report.json \
   --current  ./universcan-report/report.json
 ```
@@ -486,7 +500,7 @@ A first scan of an existing site finds a backlog. Failing every build on it
 helps nobody, so gate on what the current change introduced:
 
 ```bash
-node dist/cli.js scan \
+universcan scan \
   --config universcan.config.json \
   --format json,markdown,sarif \
   --baseline ./universcan-baseline/report.json \
@@ -513,7 +527,7 @@ wrong is quiet: name too few markets and the packs that mattered never run.
 Autoscan proposes the scope for you.
 
 ```bash
-node dist/cli.js autoscan --url https://shop.example
+universcan autoscan --url https://shop.example
 ```
 
 It loads the homepage plus the usual legal and pricing paths, reads the
@@ -547,7 +561,7 @@ unknown rather than a clean one.
 Use `--detect-only` to see that block and stop, without scanning:
 
 ```bash
-node dist/cli.js autoscan --url https://shop.example --detect-only
+universcan autoscan --url https://shop.example --detect-only
 ```
 
 **What it reads.** Only what the page already exposes - no geolocation
@@ -594,9 +608,9 @@ Once you are happy with what it found, freeze it into a config file and use
 markup changes:
 
 ```bash
-node dist/cli.js autoscan --url https://shop.example --detect-only
+universcan autoscan --url https://shop.example --detect-only
 # copy the detected jurisdictions into universcan.config.json, then:
-node dist/cli.js scan --config universcan.config.json
+universcan scan --config universcan.config.json
 ```
 
 Autoscan needs a URL. A repository exposes no market signals to probe, so
@@ -608,7 +622,7 @@ Source mode takes a repo path. By default it runs **static analysis only**,
 which needs no permission and starts nothing:
 
 ```bash
-node dist/cli.js scan --repo ../my-app --format console,json
+universcan scan --repo ../my-app --format console,json
 ```
 
 Every static finding is `evidence-only` - it flags a signal in the source,
@@ -619,7 +633,7 @@ To get the full pipeline, let UniVerscan install and start the app so it can
 drive a real browser against `localhost`:
 
 ```bash
-node dist/cli.js scan --repo ../my-app --allow-install --allow-build
+universcan scan --repo ../my-app --allow-install --allow-build
 ```
 
 Pass those two flags only when you are willing to have dependencies
@@ -743,7 +757,7 @@ plain output is what a pipeline log actually wants.
 ### `init` - set a project up
 
 ```bash
-node dist/cli.js init
+universcan init
 ```
 
 Asks what to scan, offers to probe the site for its target markets, lets you
@@ -776,7 +790,7 @@ selection, and `--yes` accepts every default for scripted setup.
 ### `explore` - browse a report
 
 ```bash
-node dist/cli.js explore --input ./universcan-report/report.json
+universcan explore --input ./universcan-report/report.json
 ```
 
 A scan of a real site produces more findings than fit on a screen. This
@@ -807,7 +821,7 @@ never stdout, so piping a report to a file or another process gives you the
 report and nothing else:
 
 ```bash
-node dist/cli.js report --input report.json --format markdown > summary.md   # clean
+universcan report --input report.json --format markdown > summary.md   # clean
 ```
 
 `--quiet` suppresses progress entirely.
@@ -1155,7 +1169,7 @@ file:
 typechecks and tests UniVerscan itself on Node 20 and 22.
 
 Nothing about the scanner is GitHub-specific. Under GitLab CI, Azure
-DevOps, or Jenkins, invoke `node dist/cli.js scan ...` as a build step and
+DevOps, or Jenkins, invoke `universcan scan ...` as a build step and
 consume whichever format that platform understands - `junit` for a test
 report, `markdown` for a job summary, `csv` for triage.
 
