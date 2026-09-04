@@ -1072,7 +1072,7 @@ matching Chromium, runs the scan, and writes the Markdown report into the job
 summary:
 
 ```yaml
-- uses: jomardyan/Playwright-Law-Suite@v0.4.0
+- uses: jomardyan/Playwright-Law-Suite@v0.5.0
   with:
     url: https://staging.shop.example
     jurisdictions: "European Union,United Kingdom"
@@ -1083,7 +1083,7 @@ Feeding the findings into code scanning, so they appear as alerts on the
 Security tab rather than only in the log:
 
 ```yaml
-- uses: jomardyan/Playwright-Law-Suite@v0.4.0
+- uses: jomardyan/Playwright-Law-Suite@v0.5.0
   id: scan
   continue-on-error: true
   with:

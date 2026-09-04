@@ -20,12 +20,21 @@ import { logger } from "./utils/logger.js";
 import type { UniVerscanConfig } from "./config/schema.js";
 import type { ScanReport, Severity } from "./engine/types.js";
 
+/**
+ * Read from package.json rather than hardcoded, so `--version` cannot drift
+ * from the version actually published. Resolved relative to this module, so
+ * it works both from dist/ in an installed package and from src/ under tsx.
+ */
+const packageVersion: string = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string }
+).version;
+
 const program = new Command();
 
 program
   .name("universcan")
   .description("Universal Playwright Web Compliance Scanner")
-  .version("0.4.0")
+  .version(packageVersion)
   .option("--no-color", "Disable coloured output (NO_COLOR is also honoured)")
   .option("--quiet", "Suppress live progress output", false);
 

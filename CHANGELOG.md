@@ -4,12 +4,16 @@ All notable changes to UniVerscan are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Versions 0.1.0 through 0.4.0 predate the first public release. They were
-never tagged or published to any registry, so the entries below are
-reconstructed from the commit history and are recorded for context rather
-than as released artifacts.
+0.5.0 is the first published release. Versions 0.1.0 through 0.4.0 predate
+it: they were never tagged or published to any registry, so those entries are
+reconstructed from the commit history and recorded for context rather than as
+released artifacts.
 
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.5.0] - 2026-09-04
 
 ### Added
 
@@ -43,6 +47,9 @@ than as released artifacts.
 ### Fixed
 
 - The JUnit check run was missing the `checks: write` permission it requires.
+- `--version` no longer reports a hardcoded string that a release bump could
+  leave behind. It is read from `package.json`, and `test/version.test.ts`
+  pins that, along with the version `action.yml` installs from npm.
 
 ## [0.4.0]
 
@@ -110,7 +117,7 @@ than as released artifacts.
   system, cookie, consent, privacy-document, forms, network, accessibility
   and security scanners, and the JSON, HTML, CSV and console reporters.
 
-<!-- No tags exist yet, so only Unreleased carries a link. Once the first
-     release is tagged, add compare links for each version here. -->
+<!-- 0.1.0 through 0.4.0 were never tagged, so they carry no links. -->
 
-[Unreleased]: https://github.com/jomardyan/Playwright-Law-Suite/commits/main
+[Unreleased]: https://github.com/jomardyan/Playwright-Law-Suite/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jomardyan/Playwright-Law-Suite/releases/tag/v0.5.0

@@ -54,7 +54,7 @@ inputs:
   version:
     description: "Version of the universcan npm package to run. Defaults to the version matching this action."
     required: false
-    default: "0.4.0"
+    default: "0.5.0"
   summary:
     description: "Append the Markdown report to the GitHub job summary. Requires 'markdown' in format."
     required: false
