@@ -35,11 +35,15 @@ export const metadata: Metadata = {
     siteName: "UniVerscan",
     title: "UniVerscan - web compliance scanning that shows its evidence",
     description: DESCRIPTION,
+    images: [
+      { url: "/og.png", width: 1200, height: 630, alt: "UniVerscan" },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "UniVerscan - web compliance scanning that shows its evidence",
     description: DESCRIPTION,
+    images: ["/og.png"],
   },
   robots: { index: true, follow: true },
 };
@@ -58,6 +62,26 @@ const FAVICON =
     </svg>`
   );
 
+/**
+ * schema.org SoftwareApplication. Deliberately claims nothing the project does
+ * not: no ratings, no install counts, no awards.
+ */
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "UniVerscan",
+  applicationCategory: "DeveloperApplication",
+  applicationSubCategory: "Web compliance scanner",
+  operatingSystem: "Linux, macOS, Windows",
+  description: DESCRIPTION,
+  url: SITE,
+  softwareVersion: "0.5.0",
+  license: "https://opensource.org/licenses/MIT",
+  codeRepository: "https://github.com/jomardyan/Playwright-Law-Suite",
+  author: { "@type": "Person", name: "Jomardyan" },
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -70,9 +94,18 @@ export default function RootLayout({
         <meta name="theme-color" content="#0b0d12" />
       </head>
       <body>
+        <a className="skip-link" href="#content">
+          Skip to content
+        </a>
         <SiteHeader />
-        {children}
+        <div id="content">{children}</div>
         <SiteFooter />
+        <script
+          type="application/ld+json"
+          // Serialised server-side into a static file; there is no user input
+          // anywhere in this object.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+        />
       </body>
     </html>
   );

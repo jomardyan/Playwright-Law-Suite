@@ -1,3 +1,5 @@
+import CopyButton from "./CopyButton";
+
 const REPO = "https://github.com/jomardyan/Playwright-Law-Suite";
 const NPM = "https://www.npmjs.com/package/universcan";
 
@@ -24,6 +26,19 @@ const JURISDICTIONS = [
   "Saudi Arabia",
 ];
 
+const INSTALL = [
+  "npm install -g universcan",
+  "npx playwright install --with-deps chromium",
+  "universcan autoscan --url https://shop.example",
+].join("\n");
+
+const DOCKER = [
+  "docker run --rm \\",
+  '  -v "$PWD/reports:/reports" \\',
+  "  ghcr.io/jomardyan/playwright-law-suite:latest \\",
+  "  scan --url https://shop.example --out /reports",
+].join("\n");
+
 export default function Home() {
   return (
     <main>
@@ -33,6 +48,7 @@ export default function Home() {
       <Coverage />
       <Output />
       <Ci />
+      <Faq />
       <Closing />
     </main>
   );
@@ -54,7 +70,10 @@ function Hero() {
         </p>
 
         <div className="code">
-          <div className="code-head">install</div>
+          <div className="code-head">
+            <span>install</span>
+            <CopyButton text={INSTALL} />
+          </div>
           <pre>
             <code>
               <span className="prompt">$ </span>npm install -g universcan
@@ -434,7 +453,10 @@ function Ci() {
           <div>
             <h3 style={{ marginTop: "1.5rem" }}>Container</h3>
             <div className="code">
-              <div className="code-head">any pipeline with docker</div>
+              <div className="code-head">
+                <span>any pipeline with docker</span>
+                <CopyButton text={DOCKER} />
+              </div>
               <pre>
                 <code>
                   <span className="prompt">$ </span>docker run --rm \{"\n"}
@@ -484,6 +506,114 @@ function Closing() {
           <a className="btn" href={`${REPO}#readme`} rel="noopener">
             Full documentation
           </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Faq() {
+  return (
+    <section id="faq">
+      <div className="wrap">
+        <p className="eyebrow">Questions</p>
+        <h2>The obvious objections.</h2>
+
+        <div className="faq">
+          <details>
+            <summary>Does passing a scan mean we are compliant?</summary>
+            <div className="answer">
+              <p>
+                No, and the tool is built to never imply it. Compliance depends
+                on facts a scanner cannot see - whether a lawful basis exists,
+                whether a disclosure is adequate for its audience, whether a
+                scarcity claim is true. UniVerscan automates what can be tested
+                objectively, collects evidence where it can only partly be
+                automated, and flags the rest for a person.
+              </p>
+              <p>
+                This is why there is no score and no certificate in the output.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>How does it avoid the usual false positives?</summary>
+            <div className="answer">
+              <p>
+                By separating what it saw from what it deduced, and by being
+                willing to say it does not know. A cookie called{" "}
+                <code>analytics_session_id</code> is reported as a probable
+                issue needing review, not a credential leak, because the name
+                is the only evidence. A tracker matched from a hostname pattern
+                is marked <code>inferred</code>.
+              </p>
+              <p>
+                Accuracy work is driven by scanning real sites and reading every
+                finding against the page that produced it. One such pass across
+                16 public sites withdrew 35 findings as unfounded.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>Will it fail our build on day one?</summary>
+            <div className="answer">
+              <p>
+                Only if you ask it to. Run without <code>--fail-on</code>{" "}
+                matching anything and it reports without gating. The usual
+                adoption path is to record the current state as a baseline and
+                gate with <code>--fail-on-new</code>, so the build fails on
+                what a change introduced rather than on a backlog nobody has
+                triaged yet.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>Is it going to hammer our site, or someone else&apos;s?</summary>
+            <div className="answer">
+              <p>
+                It honours <code>robots.txt</code> by default, following the
+                group addressed to <code>universcan</code> and falling back to{" "}
+                <code>*</code>, with standard longest-match precedence. Crawl
+                scope, page limits and navigation timeouts are all configurable.
+              </p>
+              <p>
+                Obtaining authorisation to scan a target is the operator&apos;s
+                responsibility, and that default exists for a reason.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>What does it do with the evidence it collects?</summary>
+            <div className="answer">
+              <p>
+                Writes it into the report you asked for, and nothing else. There
+                is no telemetry, no account and no service behind it - it is a
+                CLI that runs a browser on your machine or your runner.
+              </p>
+              <p>
+                Reports do embed cookie names, request URLs and headers as
+                proof, so treat them as you would any artefact from production.
+                A redaction layer exists to keep credentials out of them.
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>Why Playwright rather than a headless HTTP client?</summary>
+            <div className="answer">
+              <p>
+                Because most of what matters only happens in a real browser.
+                Consent banners are JavaScript, trackers fire after load,
+                third-party requests depend on what the page decides to do, and
+                focus indicators require actually pressing Tab. An HTTP client
+                sees the markup and misses the behaviour.
+              </p>
+            </div>
+          </details>
         </div>
       </div>
     </section>
