@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name("universcan")
   .description("Universal Playwright Web Compliance Scanner")
-  .version("0.3.0")
+  .version("0.4.0")
   .option("--no-color", "Disable coloured output (NO_COLOR is also honoured)")
   .option("--quiet", "Suppress live progress output", false);
 

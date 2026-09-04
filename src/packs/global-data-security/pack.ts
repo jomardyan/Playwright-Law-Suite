@@ -1,5 +1,8 @@
 import type { RegulatoryPack, Rule } from "../../engine/types.js";
 import { buildFinding, defineRule } from "../helpers.js";
+import { isSameSite } from "../../utils/domainClassifier.js";
+import { classifyStorageKey } from "../../utils/trackerStorage.js";
+import { isSessionCredentialName } from "../../modules/security/SecurityHeaderScanner.js";
 
 const PACK_ID = "global-data-security";
 const REGULATION = "Security of processing (technical measures common to major data protection regimes)";
@@ -173,10 +176,18 @@ const cookieAttributes = defineRule({
     const findings = [];
     for (const page of context.pages) {
       const issues = page.securityHeaders?.cookieIssues ?? [];
-      // SameSite-unset alone is a hygiene note rather than an exposure, so it
-      // is reported at a lower status than a missing Secure/HttpOnly flag.
-      const serious = issues.filter((issue) => issue.problem !== "samesite-unset");
-      const hygiene = issues.filter((issue) => issue.problem === "samesite-unset");
+      // What separates an exposure from a hygiene note is what the cookie
+      // carries. A session token without `Secure` is a credential sent in
+      // clear on the next plaintext request; a `theme` cookie without it is
+      // untidy. Reporting both as violations produced a long list in which
+      // the one that mattered was indistinguishable from the rest.
+      const isExposure = (issue: (typeof issues)[number]) =>
+        issue.problem === "no-httponly" ||
+        issue.problem === "samesite-none-without-secure" ||
+        issue.problem === "prefix-requirements-unmet" ||
+        (issue.problem === "not-secure-on-https" && issue.sessionLike);
+      const serious = issues.filter(isExposure);
+      const hygiene = issues.filter((issue) => !isExposure(issue));
 
       for (const issue of serious) {
         findings.push(
@@ -197,12 +208,101 @@ const cookieAttributes = defineRule({
             status: "risk",
             affectedUrl: page.url,
             affectedElement: hygiene.map((i) => i.name).join(", "),
-            observedBehavior: `${hygiene.length} cookie(s) declare no SameSite attribute and fall back to the browser default.`,
-            expectedBehavior: "Every cookie declares an explicit SameSite policy.",
-            evidence: [context.evidence.cookieSnapshot("Cookies without SameSite", hygiene)],
+            observedBehavior: `${hygiene.length} cookie attribute issue(s) that do not expose a credential: ${hygiene
+              .map((i) => `${i.name} (${i.problem})`)
+              .join(", ")}.`,
+            expectedBehavior: "Every cookie declares an explicit SameSite policy and is Secure on an encrypted site.",
+            evidence: [context.evidence.cookieSnapshot("Cookie attribute hygiene", hygiene)],
             manualReviewRequired: false,
           })
         );
+      }
+    }
+    return findings;
+  },
+});
+
+/**
+ * Cookies the response headers never mentioned.
+ *
+ * `Set-Cookie` on the main document is only one of the ways a cookie gets
+ * written: a single-page application setting `document.cookie` after hydration,
+ * and any cookie set by a subresource response, are both invisible to the
+ * header scan - which is exactly where a hand-rolled session cookie tends to
+ * live. The captured browser state is the only place they can be seen.
+ *
+ * Only `Secure` and `HttpOnly` are judged here. Chromium reports an effective
+ * `SameSite` of `Lax` for a cookie that declared none, so the browser API
+ * cannot distinguish a policy the server set from one the browser assumed,
+ * and asserting anything about SameSite from it would be a guess.
+ */
+const scriptSetCookieAttributes = defineRule({
+  id: "security-script-set-cookie-attributes",
+  requirement:
+    "A cookie carrying session or authentication state must be Secure and HttpOnly, however it was set - by a response header, by a subresource, or by script.",
+  severity: "high",
+  confidence: "low",
+  automationLevel: "partially-automated",
+  legalReference: SECURITY_ARTICLES,
+  remediation:
+    "Set session cookies from the server with `Secure; HttpOnly; SameSite=Lax`. A session token written by client-side script cannot be HttpOnly at all, so it is readable by any script on the page, including an injected one.",
+  run: (context) => {
+    const findings = [];
+
+    for (const page of context.pages) {
+      const states = page.consentFlow?.states ?? [];
+      if (states.length === 0) continue;
+      if (page.securityHeaders && !page.securityHeaders.https) continue;
+
+      const pageHost = (() => {
+        try {
+          return new URL(page.url).hostname;
+        } catch {
+          return "";
+        }
+      })();
+
+      // Names the header-based rule already reported, so one cookie does not
+      // produce two findings saying the same thing.
+      const alreadyReported = new Set((page.securityHeaders?.cookieIssues ?? []).map((issue) => issue.name));
+
+      const reported = new Set<string>();
+      for (const state of states) {
+        for (const cookie of state.cookies) {
+          // A vendor's own cookie is not the operator's to configure. A scan
+          // of bbc.co.uk reported `ch_sid` on `.piano.io` - a third party's
+          // cookie - as the BBC's Art. 32 failure.
+          if (!isSameSite(cookie.domain.replace(/^\./, ""), pageHost)) continue;
+          if (!isSessionCredentialName(cookie.name)) continue;
+          // A recognised tracking identifier is measurement, not a credential.
+          if (classifyStorageKey(cookie.name, "cookie") !== null) continue;
+          if (alreadyReported.has(cookie.name) || reported.has(cookie.name)) continue;
+
+          const problems: string[] = [];
+          if (!cookie.secure) problems.push("not marked Secure");
+          // The double-submit CSRF pattern requires script access, so
+          // HttpOnly is not expected on a CSRF token.
+          if (!cookie.httpOnly && !/(^|[_.-])(csrf|xsrf)([_.-]|$)/i.test(cookie.name)) {
+            problems.push("not marked HttpOnly, so client-side script can read it");
+          }
+          if (problems.length === 0) continue;
+          reported.add(cookie.name);
+          findings.push(
+            buildFinding(scriptSetCookieAttributes, PACK_ID, REGULATION, JURISDICTION, {
+              // The cookie's *name* is the only evidence that it carries
+              // session state. That is a real signal - it is how these
+              // cookies are named - but it is not proof, so this is reported
+              // for a person to confirm rather than asserted as a breach.
+              status: "probable-violation",
+              affectedUrl: page.url,
+              affectedElement: `${cookie.name} (${cookie.domain})`,
+              observedBehavior: `First-party cookie '${cookie.name}' on ${cookie.domain} was present in the browser but not declared by the main document response, and is ${problems.join("; ")}. Its name suggests session or authentication state; whether it actually carries a credential cannot be seen from the browser.`,
+              expectedBehavior: "Session and authentication cookies are Secure and HttpOnly regardless of how they are set.",
+              evidence: [context.evidence.cookieSnapshot("Cookie observed in browser state", [cookie])],
+              manualReviewRequired: true,
+            })
+          );
+        }
       }
     }
     return findings;
@@ -253,5 +353,5 @@ export const globalDataSecurityPack: RegulatoryPack = {
    * ships a pack for, so it loads whenever any jurisdiction is selected.
    */
   applicability: (config) => config.jurisdictions.length > 0,
-  rules: [transportEncryption, mixedContent, securityHeaders, cookieAttributes, formTransport] as Rule[],
+  rules: [transportEncryption, mixedContent, securityHeaders, cookieAttributes, scriptSetCookieAttributes, formTransport] as Rule[],
 };

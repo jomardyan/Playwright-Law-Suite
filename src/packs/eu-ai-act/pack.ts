@@ -28,7 +28,13 @@ const aiInteractionDisclosed = defineRule({
           affectedElement: report.interactionSignals[0]?.detail,
           observedBehavior: `The page loads an AI-interaction surface (${report.interactionSignals
             .map((s) => s.detail)
-            .join("; ")}) but no text disclosing that the visitor is dealing with an AI system was found.`,
+            .join("; ")}) but no text disclosing that the visitor is dealing with an AI system was found.${
+            (report.marketingMentions?.length ?? 0) > 0
+              ? ` The page does describe an AI feature (${report.marketingMentions
+                  .map((s) => s.detail)
+                  .join("; ")}), but naming a feature is not telling the visitor they are talking to it.`
+              : ""
+          }`,
           expectedBehavior:
             "The visitor is told they are interacting with an AI system, at the latest at the point of first interaction.",
           evidence: [context.evidence.note("AI interaction detection", report)],

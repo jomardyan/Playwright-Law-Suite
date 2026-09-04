@@ -136,6 +136,12 @@ export interface PageContext {
   route: DiscoveredRoute;
   consentFlow: ConsentFlowResult | null;
   accessibilityViolations: AxeViolationSummary[];
+  /**
+   * Accessibility checks axe ran but could not decide. Optional so a caller
+   * that built a PageContext by hand is not forced to claim there were none;
+   * `undefined` means the question was not put, not that nothing was found.
+   */
+  accessibilityIncomplete?: AxeViolationSummary[];
   interactionChecks: InteractionCheckResult[];
   forms: FormRecord[];
   privacyDocuments: PrivacyDocument[];

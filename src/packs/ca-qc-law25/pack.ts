@@ -1,4 +1,4 @@
-import { classifyDomain } from "../../utils/domainClassifier.js";
+import { classifyDomain, isNonEssentialTrackingCategory } from "../../utils/domainClassifier.js";
 import type { Finding, RegulatoryPack, Rule } from "../../engine/types.js";
 import { buildFinding, defineRule } from "../helpers.js";
 import {
@@ -23,7 +23,6 @@ const IDENTITY: PackIdentity = {
  * level of confidentiality without the user doing anything. It therefore
  * gets its own pack rather than being folded into `ca-pipeda`.
  */
-const TRACKING_CATEGORIES = new Set(["analytics", "advertising", "session-recording"]);
 
 const confidentialityByDefault = defineRule({
   id: "law25-confidentiality-by-default",
@@ -41,7 +40,7 @@ const confidentialityByDefault = defineRule({
       const flow = page.consentFlow;
       if (!flow) continue;
       const active = flow.requestsBeforeAnyConsentAction.filter((request) =>
-        TRACKING_CATEGORIES.has(classifyDomain(request.domain).category)
+        isNonEssentialTrackingCategory(classifyDomain(request.domain).category)
       );
       if (active.length === 0) continue;
       const domains = Array.from(new Set(active.map((request) => request.domain)));
@@ -78,7 +77,7 @@ const profilingNotice = defineRule({
       const flow = page.consentFlow;
       if (!flow) continue;
       const profiling = flow.requestsBeforeAnyConsentAction.filter((request) =>
-        TRACKING_CATEGORIES.has(classifyDomain(request.domain).category)
+        isNonEssentialTrackingCategory(classifyDomain(request.domain).category)
       );
       if (profiling.length === 0) continue;
       const hasCookieNotice = page.privacyDocuments.some((doc) => doc.label === "cookie-policy" && doc.url);

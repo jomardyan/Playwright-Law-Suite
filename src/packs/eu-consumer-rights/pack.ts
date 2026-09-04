@@ -36,7 +36,11 @@ const withdrawalFunction = defineRule({
         evidence: [
           context.evidence.note(
             "Subscription surfaces detected",
-            subscriptionPages.map((page) => ({ url: page.url, autoRenewal: page.consumerJourney?.autoRenewalDisclosures }))
+            subscriptionPages.map((page) => ({
+              url: page.url,
+              autoRenewal: page.consumerJourney?.autoRenewalDisclosures,
+              why: page.consumerJourney?.surfaceEvidence,
+            }))
           ),
         ],
       })
@@ -195,8 +199,12 @@ const traderIdentity = defineRule({
       buildFinding(traderIdentity, PACK_ID, REGULATION, JURISDICTION, {
         status: "missing-disclosure",
         affectedUrl: pagesWithoutIdentity[0].url,
-        observedBehavior: `No link to an imprint, legal notice, company details, or contact page was found on any of the ${pagesWithoutIdentity.length} scanned page(s).`,
+        observedBehavior: `No link to an imprint, legal notice, company details, or contact page was found on any of the ${pagesWithoutIdentity.length} scanned page(s). Link text and href were both matched, in every language this scanner covers.`,
         expectedBehavior: "Trader identity and contact details are permanently and directly accessible.",
+        // Whether the linked page actually names the legal entity, its
+        // address and its registration number cannot be seen from a link, so
+        // the presence of the link is all this rule establishes either way.
+        manualReviewRequired: true,
       })
     );
     return findings;

@@ -1,6 +1,6 @@
 {
   "name": "universcan",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "UniVerscan - Universal Playwright Web Compliance Scanner",
   "license": "MIT",
   "type": "module",

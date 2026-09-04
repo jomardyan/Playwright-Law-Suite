@@ -1,4 +1,5 @@
-import { classifyDomain } from "../utils/domainClassifier.js";
+import { classifyDomain, isNonEssentialTrackingCategory } from "../utils/domainClassifier.js";
+import { findTrackingStorage } from "../utils/trackerStorage.js";
 import type { Confidence, Finding, Rule, Severity } from "../engine/types.js";
 import { buildFinding, defineRule } from "./helpers.js";
 
@@ -29,8 +30,6 @@ export interface RuleFraming {
   legalReference: string;
   remediation: string;
 }
-
-const TRACKING_CATEGORIES = new Set(["analytics", "advertising", "session-recording"]);
 
 /** A privacy notice must be discoverable from the pages a visitor lands on. */
 export function privacyNoticePresentRule(identity: PackIdentity, framing: RuleFraming): Rule {
@@ -71,22 +70,86 @@ export function trackingBeforeConsentRule(identity: PackIdentity, framing: RuleF
       const findings: Finding[] = [];
       for (const page of context.pages) {
         if (!page.consentFlow) continue;
-        const offenders = page.consentFlow.requestsBeforeAnyConsentAction.filter((request) =>
-          TRACKING_CATEGORIES.has(classifyDomain(request.domain).category)
+        // Split by how the service was recognised. A named tracker is a
+        // fact; a host classified only from a `sync.`/`rtb.` marker is a
+        // strong signal that must not be asserted as a breach on its own.
+        const classified = page.consentFlow.requestsBeforeAnyConsentAction.map((request) => ({
+          request,
+          classification: classifyDomain(request.domain, request.url),
+        }));
+        const offenders = classified
+          .filter((entry) => entry.classification.evidence === "known" && isNonEssentialTrackingCategory(entry.classification.category))
+          .map((entry) => entry.request);
+        const inferredOffenders = classified.filter(
+          (entry) => entry.classification.evidence === "inferred" && isNonEssentialTrackingCategory(entry.classification.category)
         );
-        if (offenders.length === 0) continue;
+        // Storage counts as much as traffic. Art. 5(3) ePrivacy and its
+        // equivalents govern the storing of, and access to, information on
+        // the visitor's device - so a first-party `_ga` written by a
+        // server-side tag is the same act as a request to
+        // google-analytics.com, and a request-only check misses exactly the
+        // deployments built not to be seen.
+        const beforeConsent = page.consentFlow.states.find((state) => state.consentState === "before-consent");
+        const storageOffenders = beforeConsent
+          ? findTrackingStorage(beforeConsent).filter((entry) => isNonEssentialTrackingCategory(entry.category))
+          : [];
+        if (offenders.length === 0 && storageOffenders.length === 0 && inferredOffenders.length === 0) continue;
+
         const domains = Array.from(new Set(offenders.map((request) => request.domain)));
-        findings.push(
-          buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
-            status: "violation",
-            affectedUrl: page.url,
-            affectedElement: domains.join(", "),
-            observedBehavior: `${offenders.length} request(s) to analytics, advertising or session-recording domains fired before any consent action: ${domains.join(", ")}.`,
-            expectedBehavior: "No non-essential tracking before the visitor opts in.",
-            evidence: [context.evidence.requestLog("Pre-consent third-party requests", offenders)],
-            manualReviewRequired: false,
-          })
-        );
+        const observed: string[] = [];
+        if (offenders.length > 0) {
+          observed.push(
+            `${offenders.length} request(s) to non-essential third-party services fired before any consent action: ${domains.join(", ")}.`
+          );
+        }
+        if (storageOffenders.length > 0) {
+          observed.push(
+            `${storageOffenders.length} tracking identifier(s) were written to the device before any consent action: ${storageOffenders
+              .map((entry) => `${entry.key} (${entry.mechanism}, ${entry.service})`)
+              .join(", ")}.`
+          );
+        }
+
+        const visits = page.consentFlow.beforeConsentVisits;
+        if (visits && visits >= 2) {
+          observed.push(`The pre-consent state was measured across ${visits} independent no-interaction visits.`);
+        }
+
+        const evidence = [];
+        if (offenders.length > 0) evidence.push(context.evidence.requestLog("Pre-consent third-party requests", offenders));
+        if (storageOffenders.length > 0) evidence.push(context.evidence.note("Pre-consent tracking storage", storageOffenders));
+
+        if (offenders.length > 0 || storageOffenders.length > 0) {
+          findings.push(
+            buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
+              status: "violation",
+              affectedUrl: page.url,
+              affectedElement: domains.join(", ") || storageOffenders.map((entry) => entry.key).join(", "),
+              observedBehavior: observed.join(" "),
+              expectedBehavior: "No non-essential tracking, and no non-essential storage on the device, before the visitor opts in.",
+              evidence,
+              manualReviewRequired: false,
+            })
+          );
+        }
+
+        if (inferredOffenders.length > 0) {
+          const inferredDomains = Array.from(new Set(inferredOffenders.map((entry) => entry.request.domain)));
+          findings.push(
+            buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
+              status: "probable-violation",
+              affectedUrl: page.url,
+              affectedElement: inferredDomains.join(", "),
+              observedBehavior: `${inferredOffenders.length} request(s) fired before any consent action to host(s) this scanner does not know by name but which carry unmistakable tracking markers: ${inferredOffenders
+                .map((entry) => `${entry.request.domain} (${entry.classification.inferredFrom})`)
+                .slice(0, 12)
+                .join(", ")}${inferredOffenders.length > 12 ? ", ..." : ""}. The category was inferred from the host and request path, not from a named service, so confirm what each one is.`,
+              expectedBehavior: "No non-essential tracking before the visitor opts in.",
+              evidence: [context.evidence.requestLog("Pre-consent requests classified by URL pattern", inferredOffenders.map((entry) => entry.request))],
+              manualReviewRequired: true,
+            })
+          );
+        }
       }
       return findings;
     },
@@ -221,15 +284,36 @@ export function noticeContentsRule(
           continue;
         }
 
-        const missing = requiredDisclosures.filter(
-          (category) => !notice.disclosures.some((entry) => entry.category === category && entry.status === "detected")
+        // A topic matched only by weak wording is reported as weak, not as
+        // absent. "third parties" appears in "we never share your data with
+        // third parties" just as readily as in a recipients disclosure, so
+        // treating a weak hit as a gap manufactured a review item on notices
+        // that address the topic, and treating it as a pass hid the ones that
+        // do not. Both are named, and kept apart.
+        const missing = requiredDisclosures.filter((category) =>
+          notice.disclosures.some((entry) => entry.category === category && entry.status === "missing")
         );
-        if (missing.length === 0) continue;
+        const weak = requiredDisclosures.filter((category) =>
+          notice.disclosures.some((entry) => entry.category === category && entry.status === "potentially-incomplete")
+        );
+        if (missing.length === 0 && weak.length === 0) continue;
+
+        const parts: string[] = [];
+        if (missing.length > 0) {
+          parts.push(`No language covering the following was found: ${missing.join(", ")}.`);
+        }
+        if (weak.length > 0) {
+          parts.push(
+            `Wording that may or may not address the following was found, and needs reading in context: ${weak.join(", ")}.`
+          );
+        }
+        parts.push("Wording varies, so this is a prompt to check the notice rather than a conclusion about it.");
+
         findings.push(
           buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
             status: "manual-review",
             affectedUrl: notice.url,
-            observedBehavior: `Keyword matching did not find language covering: ${missing.join(", ")}. Wording varies, so this is a prompt to check the notice rather than a conclusion about it.`,
+            observedBehavior: parts.join(" "),
             expectedBehavior: "The notice addresses every topic the regime requires.",
             evidence: [context.evidence.note("Disclosure detection", notice.disclosures)],
             manualReviewRequired: true,
@@ -284,12 +368,28 @@ export function contactPublishedRule(identity: PackIdentity, framing: RuleFramin
         const notice = page.privacyDocuments.find((doc) => doc.label === "privacy-policy");
         if (!notice?.url || notice.textLength === 0 || seen.has(notice.url)) continue;
         seen.add(notice.url);
-        const hasContact = notice.disclosures.some(
-          (entry) =>
-            (entry.category === "controller-contact" || entry.category === "dpo-information") &&
-            entry.status === "detected"
+        const contactEntries = notice.disclosures.filter(
+          (entry) => entry.category === "controller-contact" || entry.category === "dpo-information"
         );
-        if (hasContact) continue;
+        if (contactEntries.some((entry) => entry.status === "detected")) continue;
+        // A weak match - an email address somewhere in the notice, with
+        // nothing tying it to privacy enquiries - is not proof the contact is
+        // published, but it is not proof it is missing either.
+        const weakOnly = contactEntries.some((entry) => entry.status === "potentially-incomplete");
+        if (weakOnly) {
+          findings.push(
+            buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
+              status: "manual-review",
+              affectedUrl: notice.url,
+              observedBehavior:
+                "The notice carries contact details, but nothing identifies them as the route for privacy enquiries.",
+              expectedBehavior: "A named, reachable contact for privacy enquiries is published.",
+              evidence: [context.evidence.note("Contact-related disclosure detection", notice.disclosures)],
+              manualReviewRequired: true,
+            })
+          );
+          continue;
+        }
         findings.push(
           buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
             status: "missing-disclosure",

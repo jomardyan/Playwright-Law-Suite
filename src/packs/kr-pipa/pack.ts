@@ -1,4 +1,4 @@
-import { classifyDomain } from "../../utils/domainClassifier.js";
+import { classifyDomain, isNonEssentialTrackingCategory } from "../../utils/domainClassifier.js";
 import type { Finding, RegulatoryPack, Rule } from "../../engine/types.js";
 import { buildFinding, defineRule } from "../helpers.js";
 import {
@@ -38,7 +38,7 @@ const automaticCollectionDisclosure = defineRule({
     const seen = new Set<string>();
     for (const page of context.pages) {
       const trackers = (page.consentFlow?.requestsBeforeAnyConsentAction ?? []).filter((request) =>
-        ["analytics", "advertising", "session-recording"].includes(classifyDomain(request.domain).category)
+        isNonEssentialTrackingCategory(classifyDomain(request.domain).category)
       );
       const notice = page.privacyDocuments.find((doc) => doc.label === "privacy-policy");
       const cookiePolicy = page.privacyDocuments.find((doc) => doc.label === "cookie-policy");

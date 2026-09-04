@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { analyzeSetCookieHeaders, EXPECTED_HEADERS } from "../src/modules/security/SecurityHeaderScanner.js";
+import {
+  analyzeSetCookieHeaders,
+  EXPECTED_HEADERS,
+  SESSION_COOKIE_PATTERN,
+  isSessionCredentialName,
+} from "../src/modules/security/SecurityHeaderScanner.js";
 
 describe("analyzeSetCookieHeaders", () => {
   it("flags a session cookie with no Secure flag on an HTTPS page", () => {
@@ -61,5 +66,117 @@ describe("EXPECTED_HEADERS", () => {
       "x-content-type-options",
       "referrer-policy",
     ]);
+  });
+});
+
+describe("analyzeSetCookieHeaders: precision", () => {
+  it("marks session-carrying cookies so a missing Secure flag can be weighed separately", () => {
+    const issues = analyzeSetCookieHeaders(
+      ["sessionid=abc; Path=/; SameSite=Lax", "theme=dark; Path=/; SameSite=Lax"],
+      true,
+      "shop.example"
+    );
+    expect(issues.find((i) => i.name === "sessionid" && i.problem === "not-secure-on-https")?.sessionLike).toBe(true);
+    expect(issues.find((i) => i.name === "theme" && i.problem === "not-secure-on-https")?.sessionLike).toBe(false);
+  });
+
+  it("reports a cookie whose __Host- prefix the browser will silently reject", () => {
+    // The developer believes the cookie is locked to this host; because the
+    // conditions are unmet the browser drops it, and the protection they
+    // think they have does not exist.
+    const issues = analyzeSetCookieHeaders(
+      ["__Host-session=abc; Secure; Path=/account; HttpOnly; SameSite=Lax"],
+      true,
+      "shop.example"
+    );
+    expect(issues.some((i) => i.problem === "prefix-requirements-unmet")).toBe(true);
+  });
+
+  it("accepts a correctly formed __Host- cookie", () => {
+    const issues = analyzeSetCookieHeaders(
+      ["__Host-session=abc; Secure; Path=/; HttpOnly; SameSite=Lax"],
+      true,
+      "shop.example"
+    );
+    expect(issues.some((i) => i.problem === "prefix-requirements-unmet")).toBe(false);
+  });
+
+  it("reports a __Secure- cookie that is not actually Secure", () => {
+    const issues = analyzeSetCookieHeaders(["__Secure-token=abc; Path=/; SameSite=Lax"], true, "shop.example");
+    expect(issues.some((i) => i.problem === "prefix-requirements-unmet")).toBe(true);
+  });
+
+  it("reports one issue per cookie and problem when a response repeats a Set-Cookie", () => {
+    const issues = analyzeSetCookieHeaders(
+      ["sessionid=abc; Path=/; SameSite=Lax", "sessionid=def; Path=/; SameSite=Lax"],
+      true,
+      "shop.example"
+    );
+    expect(issues.filter((i) => i.name === "sessionid" && i.problem === "not-secure-on-https")).toHaveLength(1);
+  });
+});
+
+describe("SESSION_COOKIE_PATTERN", () => {
+  it("recognises the session cookie names frameworks actually ship", () => {
+    for (const name of [
+      "sessionid",
+      "SESSIONID",
+      "session_id",
+      "PHPSESSID",
+      "JSESSIONID",
+      "connect.sid",
+      "laravel_session",
+      "auth_token",
+      "access_token",
+      "refresh_token",
+      "csrftoken",
+      "XSRF-TOKEN",
+      "jwt",
+      "remember_me",
+    ]) {
+      expect(SESSION_COOKIE_PATTERN.test(name), name).toBe(true);
+    }
+  });
+
+  it("does not treat ordinary cookies as credentials", () => {
+    for (const name of ["theme", "locale", "cart", "aside", "logintime", "consent", "_ga", "visitor_country"]) {
+      expect(SESSION_COOKIE_PATTERN.test(name), name).toBe(false);
+    }
+  });
+});
+
+describe("isSessionCredentialName", () => {
+  it("recognises a credential cookie", () => {
+    for (const name of ["sessionid", "auth_token", "JSESSIONID", "remember_me", "jwt"]) {
+      expect(isSessionCredentialName(name), name).toBe(true);
+    }
+  });
+
+  it("does not treat a measurement session as a credential", () => {
+    // Every one of these was reported as a credential exposure at violation
+    // severity on a real site, ahead of the cookie that might have mattered.
+    for (const name of ["analytics_session_id", "wt_mcp_sid", "__lt__sid", "ch_sid", "_ga_sid", "ajs_anonymous_id"]) {
+      expect(isSessionCredentialName(name), name).toBe(false);
+    }
+  });
+});
+
+describe("CSRF tokens and HttpOnly", () => {
+  it("does not require HttpOnly on a CSRF token", () => {
+    // The double-submit-cookie pattern needs script to read it: Django,
+    // Laravel and Angular all ship it that way deliberately, so python.org's
+    // `csrftoken` was being reported for a rule it cannot satisfy.
+    const issues = analyzeSetCookieHeaders(["csrftoken=abc; Path=/; Secure; SameSite=Lax"], true, "python.org");
+    expect(issues.some((i) => i.problem === "no-httponly")).toBe(false);
+  });
+
+  it("still requires Secure on a CSRF token", () => {
+    const issues = analyzeSetCookieHeaders(["csrftoken=abc; Path=/; SameSite=Lax"], true, "python.org");
+    expect(issues.some((i) => i.problem === "not-secure-on-https")).toBe(true);
+  });
+
+  it("does not raise a no-httponly issue for an analytics session cookie", () => {
+    const issues = analyzeSetCookieHeaders(["analytics_session_id=1; Path=/; Secure; SameSite=Lax"], true, "x.test");
+    expect(issues.some((i) => i.problem === "no-httponly")).toBe(false);
   });
 });

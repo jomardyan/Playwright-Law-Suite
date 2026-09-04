@@ -249,3 +249,27 @@ logic. To add a new regulatory pack:
 This plugin architecture is what makes worldwide coverage additive rather
 than a rewrite: adding Country N+1 never requires touching the engine or
 any other pack.
+
+## What a quiet result does and does not mean
+
+Three things the scanner now reports explicitly, which an agent must carry
+into its summary rather than flatten:
+
+- **`unreachablePages` includes 200 responses.** A bot-management challenge,
+  a captcha wall or a geo-block served with HTTP 200 is recorded there with
+  the reason, because it is not the page that was requested. Those pages are
+  unscanned, not compliant, and nothing in the report is about them. Check
+  `coverage.pagesUnreachable` and read the reasons before summarising.
+- **Pre-consent findings say how many visits they rest on.** The
+  no-interaction visit is repeated (`consent.beforeConsentVisits`, default 2)
+  and the observations unioned, because a site does not load the same
+  trackers on every request. A finding that says "seen on 1 of 2 visits" is
+  weaker evidence than one seen on both, and the absence of a finding is
+  weaker still - it means nothing was observed on those visits, not that
+  nothing happens.
+- **Third-party classification has two tiers.** `evidence: "known"` means the
+  service is named; `evidence: "inferred"` means the host was classified from
+  a tracking marker in its name or request path, and the rule reports it as a
+  `probable-violation` that says so. Do not upgrade an inferred finding to a
+  confirmed one when summarising, and do not read
+  `unknown-third-party` as harmless - it means nothing was established.

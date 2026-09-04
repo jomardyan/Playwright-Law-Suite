@@ -144,6 +144,7 @@ describe("eu-ai-act-transparency pack", () => {
           interactionSignals: [{ kind: "vendor-script", detail: "Intercom (widget.intercom.io)" }],
           disclosureSignals: [],
           generatedContentSignals: [],
+    marketingMentions: [],
         },
       }),
     ]);
@@ -160,6 +161,7 @@ describe("eu-ai-act-transparency pack", () => {
           interactionSignals: [{ kind: "widget-markup", detail: "1 element matching [class*='chatbot']" }],
           disclosureSignals: [{ kind: "page-text", detail: "You are chatting with an AI assistant" }],
           generatedContentSignals: [],
+    marketingMentions: [],
         },
       }),
     ]);
@@ -174,6 +176,7 @@ describe("eu-ai-act-transparency pack", () => {
           interactionSignals: [{ kind: "widget-markup", detail: "chatbot" }],
           disclosureSignals: [{ kind: "page-text", detail: "AI assistant" }],
           generatedContentSignals: [],
+    marketingMentions: [],
         },
       }),
     ]);
@@ -201,6 +204,8 @@ describe("eu-consumer-rights pack", () => {
     autoRenewalDisclosures: [],
     urgencyClaims: [],
     traderIdentityLinked: true,
+    traderIdentityLinks: ["Contact -> https://shop.example/contact"],
+    surfaceEvidence: [],
     ...overrides,
   });
 
@@ -247,7 +252,8 @@ describe("eu-consumer-rights pack", () => {
             usesHttps: true,
             actionIsThirdParty: false,
             fields: [],
-            consentCheckboxes: [{ label: "Sign me up for marketing emails", preChecked: true, purposeBundled: false }],
+            scope: "form" as const,
+            consentCheckboxes: [{ label: "Sign me up for marketing emails", preChecked: true, purposeBundled: false, hidden: false }],
           },
         ],
       }),
@@ -402,8 +408,10 @@ describe("global-data-security pack", () => {
       pageContext({
         securityHeaders: security({
           cookieIssues: [
-            { name: "sid", domain: "shop.example", problem: "not-secure-on-https" },
-            { name: "prefs", domain: "shop.example", problem: "samesite-unset" },
+            // `sid` carries session state, so a missing Secure flag exposes a
+            // credential; `prefs` does not, so the same omission is hygiene.
+            { name: "sid", domain: "shop.example", problem: "not-secure-on-https", sessionLike: true },
+            { name: "prefs", domain: "shop.example", problem: "samesite-unset", sessionLike: false },
           ],
         }),
       }),
@@ -422,7 +430,8 @@ describe("global-data-security pack", () => {
             method: "post",
             usesHttps: false,
             actionIsThirdParty: false,
-            fields: [{ name: "email", type: "email", category: "email", required: true, autocomplete: null }],
+            fields: [{ name: "email", type: "email", category: "email", required: true, autocomplete: null, hidden: false }],
+            scope: "form" as const,
             consentCheckboxes: [],
           },
         ],
