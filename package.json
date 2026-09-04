@@ -25,7 +25,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "postinstall:browsers": "playwright install --with-deps chromium",
-    "doctor": "node dist/cli.js doctor"
+    "doctor": "node dist/cli.js doctor",
+    "prepublishOnly": "npm run build",
+    "clean": "rm -rf dist universcan-report"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.1",
@@ -43,7 +45,7 @@
     "vitest": "^2.1.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "keywords": [
     "compliance",
@@ -72,5 +74,8 @@
       "require": "./require-shim.cjs"
     },
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

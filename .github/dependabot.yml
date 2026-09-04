@@ -1,0 +1,60 @@
+version: 2
+
+updates:
+  # npm. Dependabot has been opening pull requests here already, via the
+  # default security-update behaviour and with no configuration to group them.
+  # That produced separate pull requests for the same transitive bump, so
+  # non-security updates are grouped and rate-limited here.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # Type definitions and the build/test toolchain move together and are
+      # reviewed together.
+      dev-tooling:
+        patterns:
+          - "@types/*"
+          - "typescript"
+          - "tsx"
+          - "vitest"
+        update-types:
+          - "minor"
+          - "patch"
+      production-minor:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # The container image tag in the Dockerfile has to match the resolved
+      # Playwright version exactly, or the image builds but cannot launch a
+      # browser. Bumping Playwright is therefore a two-file change and is
+      # done deliberately rather than automatically.
+      - dependency-name: "playwright"
+        update-types:
+          - "version-update:semver-major"
+
+  # Keeps the actions in ci.yml, universcan.yml and release.yml current,
+  # which also clears the Node 20 runtime deprecation warnings as each
+  # action publishes a Node 24 major.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # The "docker" ecosystem is deliberately NOT enabled. It would bump the
+  # Dockerfile's mcr.microsoft.com/playwright tag on its own schedule,
+  # independently of package-lock.json, which is precisely the driver/browser
+  # version drift the Dockerfile warns about: the image builds and then
+  # cannot launch a browser. The image tag is bumped in the same change as
+  # the playwright dependency, by hand.

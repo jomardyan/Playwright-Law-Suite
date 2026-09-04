@@ -1,0 +1,184 @@
+name: "UniVerscan Compliance Scan"
+description: "Scan a website for GDPR, cookie-consent, WCAG accessibility, privacy, security and consumer-rights compliance signals, and gate the build on what it finds."
+author: "jomardyan"
+
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  url:
+    description: "URL of the live site to scan. Either this or repo is required."
+    required: false
+  repo:
+    description: "Path to application source to scan in source mode. Either this or url is required."
+    required: false
+  config:
+    description: "Path to a UniVerscan config file (JSON or YAML). Takes precedence over the individual scope inputs below."
+    required: false
+  jurisdictions:
+    description: "Comma-separated jurisdictions, e.g. 'European Union,United Kingdom'."
+    required: false
+  packs:
+    description: "Comma-separated regulatory pack ids to restrict the scan to."
+    required: false
+  sector:
+    description: "Business sector, e.g. 'e-commerce'."
+    required: false
+  accessibility-standard:
+    description: "One of wcag2a, wcag2aa, wcag21aa, wcag22aa, wcag22aaa."
+    required: false
+  autoscan:
+    description: "Infer the target markets from the site instead of naming them. The inferred scope is reported with its evidence. Set to 'true' to enable."
+    required: false
+    default: "false"
+  format:
+    description: "Comma-separated report formats: json, html, console, junit, sarif, markdown, csv."
+    required: false
+    default: "json,markdown,sarif,junit"
+  out:
+    description: "Directory to write reports into."
+    required: false
+    default: "./universcan-report"
+  fail-on:
+    description: "Comma-separated severities that fail the step, e.g. 'critical,high'. Leaving this empty does NOT disable gating: the flag is then omitted and the scanner falls back to ci.failOn from the config, which itself defaults to critical,high. To report without gating, set ci.failOn to an empty list in a config file."
+    required: false
+    default: "critical,high"
+  baseline:
+    description: "Path to a previous report.json. Findings are compared against it."
+    required: false
+  fail-on-new:
+    description: "With baseline set, fail only on findings absent from the baseline. Set to 'true' to enable."
+    required: false
+    default: "false"
+  version:
+    description: "Version of the universcan npm package to run. Defaults to the version matching this action."
+    required: false
+    default: "0.4.0"
+  summary:
+    description: "Append the Markdown report to the GitHub job summary. Requires 'markdown' in format."
+    required: false
+    default: "true"
+
+outputs:
+  exit-code:
+    description: "The scanner's exit code: 0 clean, 1 findings at or above fail-on, 2 the scan could not run."
+    value: ${{ steps.scan.outputs.exit-code }}
+  report-dir:
+    description: "Directory the reports were written to."
+    value: ${{ steps.scan.outputs.report-dir }}
+  report-json:
+    description: "Path to report.json, empty if json was not among the requested formats."
+    value: ${{ steps.scan.outputs.report-json }}
+  sarif:
+    description: "Path to report.sarif, empty if sarif was not among the requested formats. Feed this to github/codeql-action/upload-sarif."
+    value: ${{ steps.scan.outputs.sarif }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    # Installed into a temporary prefix rather than the caller's checkout, so
+    # this cannot collide with their node_modules or their package.json.
+    - name: Install UniVerscan
+      id: install
+      shell: bash
+      env:
+        IN_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        prefix="$(mktemp -d)"
+        npm install --prefix "$prefix" --no-audit --no-fund "universcan@$IN_VERSION"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
+    # Chromium is installed through the Playwright that UniVerscan itself
+    # depends on, never through a separately resolved one. A newer driver
+    # installs a browser revision the pinned driver does not expect, which
+    # fails at launch with "Executable doesn't exist".
+    - name: Install Chromium
+      shell: bash
+      env:
+        PREFIX: ${{ steps.install.outputs.prefix }}
+      run: |
+        set -euo pipefail
+        "$PREFIX/node_modules/.bin/playwright" install --with-deps chromium
+
+    - name: Run UniVerscan
+      id: scan
+      shell: bash
+      env:
+        PREFIX: ${{ steps.install.outputs.prefix }}
+        # Passed through the environment rather than interpolated into the
+        # command line, so a value containing shell metacharacters cannot
+        # alter the command that runs.
+        IN_URL: ${{ inputs.url }}
+        IN_REPO: ${{ inputs.repo }}
+        IN_CONFIG: ${{ inputs.config }}
+        IN_JURISDICTIONS: ${{ inputs.jurisdictions }}
+        IN_PACKS: ${{ inputs.packs }}
+        IN_SECTOR: ${{ inputs.sector }}
+        IN_A11Y: ${{ inputs.accessibility-standard }}
+        IN_AUTOSCAN: ${{ inputs.autoscan }}
+        IN_FORMAT: ${{ inputs.format }}
+        IN_OUT: ${{ inputs.out }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_BASELINE: ${{ inputs.baseline }}
+        IN_FAIL_ON_NEW: ${{ inputs.fail-on-new }}
+        IN_SUMMARY: ${{ inputs.summary }}
+      run: |
+        set -uo pipefail
+
+        if [ -z "$IN_URL" ] && [ -z "$IN_REPO" ] && [ -z "$IN_CONFIG" ]; then
+          echo "::error::Provide at least one of 'url', 'repo' or 'config'." >&2
+          exit 2
+        fi
+
+        command=scan
+        if [ "$IN_AUTOSCAN" = "true" ]; then
+          command=autoscan
+        fi
+
+        args=()
+        [ -n "$IN_URL" ]    && args+=(--url "$IN_URL")
+        [ -n "$IN_CONFIG" ] && args+=(--config "$IN_CONFIG")
+        [ -n "$IN_FORMAT" ] && args+=(--format "$IN_FORMAT")
+        [ -n "$IN_OUT" ]    && args+=(--out "$IN_OUT")
+
+        # autoscan derives the scope itself, so the scope flags and the
+        # source-mode flags only apply to scan.
+        if [ "$command" = "scan" ]; then
+          [ -n "$IN_REPO" ]          && args+=(--repo "$IN_REPO")
+          [ -n "$IN_JURISDICTIONS" ] && args+=(--jurisdictions "$IN_JURISDICTIONS")
+          [ -n "$IN_PACKS" ]         && args+=(--packs "$IN_PACKS")
+          [ -n "$IN_SECTOR" ]        && args+=(--sector "$IN_SECTOR")
+          [ -n "$IN_A11Y" ]          && args+=(--accessibility-standard "$IN_A11Y")
+          [ -n "$IN_BASELINE" ]      && args+=(--baseline "$IN_BASELINE")
+          [ "$IN_FAIL_ON_NEW" = "true" ] && args+=(--fail-on-new)
+        fi
+
+        [ -n "$IN_FAIL_ON" ] && args+=(--fail-on "$IN_FAIL_ON")
+
+        # Runs from the caller's workspace, so relative --config and --out
+        # paths resolve against their checkout.
+        "$PREFIX/node_modules/.bin/universcan" "$command" "${args[@]}"
+        code=$?
+
+        {
+          echo "exit-code=$code"
+          echo "report-dir=$IN_OUT"
+          if [ -f "$IN_OUT/report.json" ]; then echo "report-json=$IN_OUT/report.json"; else echo "report-json="; fi
+          if [ -f "$IN_OUT/report.sarif" ]; then echo "sarif=$IN_OUT/report.sarif"; else echo "sarif="; fi
+        } >> "$GITHUB_OUTPUT"
+
+        if [ "$IN_SUMMARY" = "true" ] && [ -f "$IN_OUT/report.md" ]; then
+          cat "$IN_OUT/report.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        # Exit code 2 means the scan could not run at all, which is a
+        # configuration fault. Exit code 1 means findings reached fail-on,
+        # which is the gate doing its job. Both fail the step.
+        exit $code

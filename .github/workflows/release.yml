@@ -1,0 +1,237 @@
+name: Release
+
+# Publishes a tagged version to npm and to the GitHub container registry,
+# then opens a GitHub Release from the changelog.
+#
+# Cutting a release:
+#   1. Move the CHANGELOG.md "Unreleased" entries under the new version.
+#   2. npm version <major|minor|patch>   (this commits and tags)
+#   3. git push --follow-tags
+#
+# Deliberately avoids third-party actions: registry login, image build and
+# release creation all run through tooling already present on the runner
+# (docker and gh), so there is no action version to keep current and no
+# third-party code in the path of a publish.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify everything without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Nothing is published before the same checks that gate a pull request have
+  # passed against the exact commit being released.
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      dry-run: ${{ steps.version.outputs.dry-run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # A tag that disagrees with package.json would publish a version nobody
+      # can trace back to a commit, so it is a hard stop rather than a warning.
+      - name: Resolve and check the version
+        id: version
+        run: |
+          set -euo pipefail
+          pkg="$(node -p "require('./package.json').version")"
+          echo "package.json version: $pkg"
+
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            echo "tag version: $tag"
+            if [ "$tag" != "$pkg" ]; then
+              echo "::error::Tag v$tag does not match package.json version $pkg. Fix one of them and re-tag." >&2
+              exit 1
+            fi
+            echo "dry-run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry-run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+      # The action's default npm version must track package.json, or the
+      # published action would install a version that predates it.
+      - name: Check action.yml pins this version
+        run: |
+          set -euo pipefail
+          pkg="$(node -p "require('./package.json').version")"
+          declared="$(node -e "
+            const fs = require('node:fs');
+            const m = fs.readFileSync('action.yml', 'utf8').match(/version:[\s\S]*?default:\s*\"([^\"]+)\"/);
+            process.stdout.write(m ? m[1] : '');
+          ")"
+          if [ "$declared" != "$pkg" ]; then
+            echo "::error::action.yml pins universcan@$declared but package.json is $pkg." >&2
+            exit 1
+          fi
+          echo "action.yml pins $declared, matching package.json."
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+        env:
+          UNIVERSCAN_REQUIRE_CHROMIUM: "1"
+
+      - name: Smoke-check the built CLI
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js packs
+
+  npm:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+
+      # prepublishOnly rebuilds dist/, so the tarball cannot carry stale
+      # output even though no build step runs here.
+      - name: Publish to npm
+        if: needs.verify.outputs.dry-run != 'true'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Show what would be published
+        if: needs.verify.outputs.dry-run == 'true'
+        run: |
+          npm run build
+          npm pack --dry-run
+
+  container:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # The Dockerfile copies a prebuilt dist/ rather than compiling in the
+      # image, so the build has to happen here first.
+      - name: Build dist
+        run: |
+          npm ci
+          npm run build
+
+      # The image tag must match the resolved playwright version, or the
+      # image builds and then cannot launch a browser.
+      - name: Check the Dockerfile matches the resolved Playwright version
+        run: |
+          set -euo pipefail
+          resolved="$(node -p "require('playwright/package.json').version")"
+          pinned="$(grep -oP 'mcr\.microsoft\.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)"
+          echo "playwright resolved: $resolved | Dockerfile pins: $pinned"
+          if [ "$resolved" != "$pinned" ]; then
+            echo "::error::Dockerfile pins playwright v$pinned but the lockfile resolves $resolved. Update the FROM tag." >&2
+            exit 1
+          fi
+
+      - name: Build the image
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${{ needs.verify.outputs.version }}"
+          docker build \
+            -t "$image:$version" \
+            -t "$image:latest" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.version=$version" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.licenses=MIT" \
+            .
+
+      # Proves the image can actually launch a browser before it is published,
+      # which is the failure mode a version mismatch produces.
+      - name: Verify the image can run a scan
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker run --rm "$image:${{ needs.verify.outputs.version }}" doctor
+
+      - name: Push to ghcr.io
+        if: needs.verify.outputs.dry-run != 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker push "$image:${{ needs.verify.outputs.version }}"
+          docker push "$image:latest"
+
+  github-release:
+    needs: [verify, npm, container]
+    if: github.ref_type == 'tag' && needs.verify.outputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # required to create the release
+    steps:
+      - uses: actions/checkout@v4
+
+      # Uses the changelog section for this version as the release body, so
+      # the two never drift apart.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="$(mktemp)"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' CHANGELOG.md > "$notes"
+
+          if [ ! -s "$notes" ]; then
+            echo "No CHANGELOG.md section found for $VERSION; falling back to generated notes."
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes --verify-tag
+          else
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file "$notes" --verify-tag
+          fi

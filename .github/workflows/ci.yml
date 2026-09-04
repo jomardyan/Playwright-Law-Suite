@@ -72,3 +72,23 @@ jobs:
 
       - name: Check the package contents
         run: npm pack --dry-run
+
+      # action.yml installs a pinned universcan version from npm. If that pin
+      # falls behind package.json, the published action runs an older scanner
+      # than the release it ships with. The release workflow enforces this too;
+      # checking it here means the drift is caught in the pull request that
+      # causes it.
+      - name: Check action.yml pins the current version
+        run: |
+          set -euo pipefail
+          pkg="$(node -p "require('./package.json').version")"
+          declared="$(node -e "
+            const fs = require('node:fs');
+            const m = fs.readFileSync('action.yml', 'utf8').match(/version:[\s\S]*?default:\s*\"([^\"]+)\"/);
+            process.stdout.write(m ? m[1] : '');
+          ")"
+          if [ "$declared" != "$pkg" ]; then
+            echo "::error::action.yml pins universcan@$declared but package.json is $pkg." >&2
+            exit 1
+          fi
+          echo "action.yml pins $declared, matching package.json."

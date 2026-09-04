@@ -1,5 +1,10 @@
 # UniVerscan
 
+[![CI](https://github.com/jomardyan/Playwright-Law-Suite/actions/workflows/ci.yml/badge.svg)](https://github.com/jomardyan/Playwright-Law-Suite/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/universcan.svg)](https://www.npmjs.com/package/universcan)
+[![node](https://img.shields.io/node/v/universcan.svg)](https://www.npmjs.com/package/universcan)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Universal Playwright Web Compliance Scanner**
 
 UniVerscan is a modular web compliance scanning framework built around
@@ -20,7 +25,7 @@ first scan to a CI gate.
 - [Accepted risks (`ignoredFindings`)](#accepted-risks-ignoredfindings)
 - [Included regulatory packs](#included-regulatory-packs)
 - [**Tutorial**](#tutorial)
-  - [Step 1 - Install and build](#step-1---install-and-build)
+  - [Step 1 - Install](#step-1---install)
   - [Step 2 - Run your first scan](#step-2---run-your-first-scan)
   - [Step 3 - Understand a finding](#step-3---understand-a-finding)
   - [Step 4 - Narrow the scan to your actual obligations](#step-4---narrow-the-scan-to-your-actual-obligations)
@@ -226,22 +231,54 @@ for how to add a pack. Run `universcan packs` to list what is registered.
 A walkthrough from a first scan to a CI gate. It uses a small e-commerce
 page as the running example; substitute your own URL at any point.
 
-### Step 1 - Install and build
+### Step 1 - Install
+
+Install the CLI and the browser it drives:
+
+```bash
+npm install -g universcan
+npx playwright install --with-deps chromium   # first time only
+```
+
+Or run it without installing anything:
+
+```bash
+npx universcan scan --url https://shop.example --jurisdictions "European Union"
+```
+
+Node 20 or newer is required.
+
+Check the install by listing the regulatory packs and the dates their
+obligations apply from:
+
+```bash
+universcan packs
+```
+
+Then confirm the environment can actually run a scan. This separates an
+environment fault from a real finding, and is worth running before the first
+scan on any new machine:
+
+```bash
+universcan doctor
+```
+
+<details>
+<summary>Running from source instead</summary>
 
 ```bash
 git clone https://github.com/jomardyan/Playwright-Law-Suite.git
 cd Playwright-Law-Suite
 npm install
 npm run build
-npx playwright install --with-deps chromium   # first time only
-```
-
-Check the install by listing the regulatory packs and the dates their
-obligations apply from:
-
-```bash
+npx playwright install --with-deps chromium
 node dist/cli.js packs
 ```
+
+Every `universcan` command below then becomes `node dist/cli.js`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the full development setup.
+
+</details>
 
 In a hurry? `node dist/cli.js init` walks you through the whole of Steps 2-4
 interactively - it probes the site, proposes a scope, shows which packs that
@@ -1027,6 +1064,71 @@ Bundled profiles:
 | `global-multi-market` | Every jurisdiction pack, for a service sold worldwide. |
 
 ## CI integration
+
+### As a GitHub Action
+
+The quickest way to gate a repository. It installs the scanner, installs the
+matching Chromium, runs the scan, and writes the Markdown report into the job
+summary:
+
+```yaml
+- uses: jomardyan/Playwright-Law-Suite@v0.4.0
+  with:
+    url: https://staging.shop.example
+    jurisdictions: "European Union,United Kingdom"
+    fail-on: critical,high
+```
+
+Feeding the findings into code scanning, so they appear as alerts on the
+Security tab rather than only in the log:
+
+```yaml
+- uses: jomardyan/Playwright-Law-Suite@v0.4.0
+  id: scan
+  continue-on-error: true
+  with:
+    url: https://staging.shop.example
+    config: config/profiles/eu-ecommerce.json
+    format: json,markdown,sarif
+    fail-on: critical,high
+
+- uses: github/codeql-action/upload-sarif@v4
+  if: steps.scan.outputs.sarif != ''
+  with:
+    sarif_file: ${{ steps.scan.outputs.sarif }}
+    category: universcan
+```
+
+Inputs mirror the CLI flags: `url`, `repo`, `config`, `jurisdictions`,
+`packs`, `sector`, `accessibility-standard`, `format`, `out`, `fail-on`,
+`baseline`, `fail-on-new`, plus `autoscan` to infer the scope and `summary`
+to control the job-summary output. Outputs are `exit-code`, `report-dir`,
+`report-json` and `sarif`.
+
+Two things to know:
+
+- `security-events: write` is required for the SARIF upload, and a pull
+  request from a fork or from Dependabot runs with a read-only token that
+  cannot write code-scanning results.
+- Leaving `fail-on` empty does not disable gating. The flag is then omitted
+  and the scanner falls back to `ci.failOn` from the config, which itself
+  defaults to `critical,high`. To report without gating, set `ci.failOn` to
+  an empty list in a config file.
+
+### As a container
+
+```bash
+docker run --rm -v "$PWD/reports:/reports" \
+  ghcr.io/jomardyan/playwright-law-suite:latest \
+  scan --url https://shop.example --jurisdictions "European Union" --out /reports
+```
+
+The image is built on Playwright's own base, so Chromium and every system
+library it needs are already present, and it runs as a non-root user so the
+browser sandbox stays on. Useful under GitLab CI, Azure Pipelines and Jenkins,
+where a Node toolchain plus a browser download is the awkward part.
+
+### As a CLI in any pipeline
 
 Tutorial Step 7 covers the gating strategy.
 `.github/workflows/universcan.yml` is a working GitHub Actions example: it
