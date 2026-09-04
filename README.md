@@ -971,7 +971,7 @@ docker run --rm -v "$PWD/reports:/reports" \
   scan --url https://shop.example --jurisdictions "European Union" --out /reports
 ```
 
-Tags track releases (`:0.5.0`) alongside `:latest`. Pass `--out` pointing at
+Tags track releases (`:0.5.2`) alongside `:latest`. Pass `--out` pointing at
 the mounted volume, as above: without it reports are written inside the
 container and are lost when it exits.
 
@@ -1133,7 +1133,7 @@ matching Chromium, runs the scan, and writes the Markdown report into the job
 summary:
 
 ```yaml
-- uses: jomardyan/Playwright-Law-Suite@v0.5.0
+- uses: jomardyan/Playwright-Law-Suite@v0.5.2
   with:
     url: https://staging.shop.example
     jurisdictions: "European Union,United Kingdom"
@@ -1144,7 +1144,7 @@ Feeding the findings into code scanning, so they appear as alerts on the
 Security tab rather than only in the log:
 
 ```yaml
-- uses: jomardyan/Playwright-Law-Suite@v0.5.0
+- uses: jomardyan/Playwright-Law-Suite@v0.5.2
   id: scan
   continue-on-error: true
   with:

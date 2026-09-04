@@ -4,12 +4,18 @@ All notable changes to UniVerscan are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-0.5.0 is the first published release. Versions 0.1.0 through 0.4.0 predate
-it: they were never tagged or published to any registry, so those entries are
-reconstructed from the commit history and recorded for context rather than as
-released artifacts.
+0.5.2 is the first release published to npm. 0.5.0 was tagged and its
+container image was pushed, but the npm publish was refused by the registry,
+so no version of the package reached it; 0.5.1 was not used. Versions 0.1.0
+through 0.4.0 predate all of that and were never tagged at all, so those
+entries are reconstructed from the commit history and recorded for context
+rather than as released artifacts.
 
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.5.2] - 2026-09-04
 
 ### Changed
 
@@ -140,5 +146,6 @@ released artifacts.
 
 <!-- 0.1.0 through 0.4.0 were never tagged, so they carry no links. -->
 
-[Unreleased]: https://github.com/jomardyan/Playwright-Law-Suite/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jomardyan/Playwright-Law-Suite/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/jomardyan/Playwright-Law-Suite/releases/tag/v0.5.2
 [0.5.0]: https://github.com/jomardyan/Playwright-Law-Suite/releases/tag/v0.5.0
