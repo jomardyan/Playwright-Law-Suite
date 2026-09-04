@@ -1,0 +1,22 @@
+{
+  "name": "universcan-website",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Landing page for UniVerscan, statically exported for universcan.lolisoft.eu",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^16.3.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "typescript": "^7.0.2"
+  }
+}
