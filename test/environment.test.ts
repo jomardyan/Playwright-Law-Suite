@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, chmodSync, rmSync } from "node:fs";
+import { mkdtempSync, chmodSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -35,6 +35,19 @@ describe("checkNodeVersion", () => {
 
   it("does not throw on an unparsable version", () => {
     expect(checkNodeVersion("not-a-version").status).toBe("warn");
+  });
+
+  /**
+   * These drifted once: engines.node moved to >=20 while this floor stayed at
+   * 18, so doctor called a Node 18 environment healthy when npm would refuse
+   * to install into it.
+   */
+  it("uses the same floor as engines.node, so doctor cannot pass what npm rejects", () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf-8")
+    ) as { engines: { node: string } };
+    const declared = Number.parseInt(pkg.engines.node.match(/(\d+)/)?.[1] ?? "", 10);
+    expect(declared).toBe(MINIMUM_NODE_MAJOR);
   });
 });
 

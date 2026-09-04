@@ -7,14 +7,50 @@
 
 **Universal Playwright Web Compliance Scanner**
 
-UniVerscan is a modular web compliance scanning framework built around
-Playwright. It analyzes websites and web application source code against
-configurable legal, regulatory, accessibility, privacy, cookie, consumer
-protection, and technical compliance requirements across multiple
-jurisdictions.
+UniVerscan drives a real browser over a website and reports what it can
+establish about that site's legal, privacy, cookie, accessibility, consumer
+and security obligations. It ships **24 regulatory packs and 129 rules**
+covering 19 jurisdictions plus a jurisdiction-agnostic baseline - GDPR and
+ePrivacy, WCAG, the EU AI Act, CCPA and the rest - and a pack loads only when
+its jurisdiction is in scope. It also scans application source directly.
 
-**New here?** Jump to the [Tutorial](#tutorial) for a walkthrough from a
-first scan to a CI gate.
+It does not tell you a site is compliant. Every finding carries four
+independent fields - what its status is, how severe it would be, whether the
+evidence was **observed or inferred**, and how confident the check is - so a
+breach is never confused with something the scanner merely could not see. A
+rule that could not run reports `not-evaluated`, never a silent pass.
+
+## Quick start
+
+```bash
+npm install -g universcan
+npx playwright install --with-deps chromium   # first time only
+
+universcan autoscan --url https://shop.example
+```
+
+`autoscan` reads the market signals the site exposes, shows you the scope it
+inferred and the evidence for each market, then scans against it. Prefer to
+name the scope yourself:
+
+```bash
+universcan scan \
+  --url https://shop.example \
+  --jurisdictions "European Union" \
+  --format console,html,sarif \
+  --fail-on critical,high
+```
+
+You get a console summary, an HTML report, and SARIF for GitHub code
+scanning - plus `json`, `junit`, `markdown` and `csv` on request. Exit code
+`0` is clean, `1` means findings reached `--fail-on`, `2` means the scan
+could not run.
+
+Requires Node 20 or newer. Also available as a
+[GitHub Action](#as-a-github-action) and a
+[container image](#as-a-container).
+
+**New here?** The [Tutorial](#tutorial) walks from a first scan to a CI gate.
 
 ## Contents
 
@@ -36,15 +72,26 @@ first scan to a CI gate.
   - [Scanning a repository instead of a URL](#scanning-a-repository-instead-of-a-url)
   - [Writing your own rule pack](#writing-your-own-rule-pack)
   - [Using the framework as a library](#using-the-framework-as-a-library)
-- [Running it in your environment](#running-it-in-your-environment)
 - [Interactive use](#interactive-use)
+  - [`init` - set a project up](#init---set-a-project-up)
+  - [`explore` - browse a report](#explore---browse-a-report)
+  - [Live progress](#live-progress)
   - [When something is wrong](#when-something-is-wrong)
+  - [Controlling the output](#controlling-the-output)
+- [Running it in your environment](#running-it-in-your-environment)
+  - [Containers](#containers)
+  - [Browsers, proxies and TLS](#browsers-proxies-and-tls)
 - [Command reference](#command-reference)
 - [Configuration reference](#configuration-reference)
 - [CI integration](#ci-integration)
+  - [As a GitHub Action](#as-a-github-action)
+  - [As a container](#as-a-container)
+  - [As a CLI in any pipeline](#as-a-cli-in-any-pipeline)
 - [Crawl scope and robots.txt](#crawl-scope-and-robotstxt)
 - [For AI coding agents](#for-ai-coding-agents)
 - [Development](#development)
+- [Project](#project)
+- [License](#license)
 
 ## What this tool is - and is not
 
@@ -747,6 +794,18 @@ console.log(`${report.coverage.rulesNotEvaluated} rule(s) could not run - not pa
 already know the mode. `diffReports(baseline, current)` gives you the same
 comparison the `diff` command prints, as a structured object.
 
+The package is ESM-only, and says so precisely: `require()` throws a message
+telling you to use a dynamic import rather than Node's opaque
+`ERR_PACKAGE_PATH_NOT_EXPORTED`.
+
+```js
+import { ScanEngine, loadConfig } from "universcan";       // ESM
+const { ScanEngine } = await import("universcan");          // from CommonJS
+```
+
+Requires Node 20 or newer, matching `engines.node`; an even-numbered LTS line
+is recommended and `doctor` warns on an odd-numbered one.
+
 ## Interactive use
 
 The CLI is built for CI first, so every interactive affordance degrades
@@ -901,18 +960,22 @@ Exit code `0` clean, `2` when something must be fixed first.
 
 ### Containers
 
-`Dockerfile` builds on Playwright's own image, which already carries the
-browser and its system libraries - the part that is genuinely painful to
-reproduce. Two things matter:
+A published image saves you the whole browser-installation problem, which is
+the awkward part under GitLab CI, Azure Pipelines and Jenkins:
 
-- **Pin the image tag to the resolved Playwright version**, not the caret
-  range. A driver newer than the image's browser builds fine and then fails
-  to launch. Check with `node -p "require('playwright/package.json').version"`.
-- **Run as a non-root user.** Chromium's setuid sandbox cannot start as uid
-  0. UniVerscan detects root and adds `--no-sandbox` automatically, logging
-  that it did, so a container works out of the box - but the sandbox is a
-  real protection, and the shipped `Dockerfile` uses `USER pwuser` to keep
-  it. `UNIVERSCAN_NO_SANDBOX=0` opts out of the automatic flag.
+```bash
+docker run --rm -v "$PWD/reports:/reports" \
+  ghcr.io/jomardyan/playwright-law-suite:latest \
+  scan --url https://shop.example --jurisdictions "European Union" --out /reports
+```
+
+Tags track releases (`:0.5.0`) alongside `:latest`. Pass `--out` pointing at
+the mounted volume, as above: without it reports are written inside the
+container and are lost when it exits.
+
+Building your own works the same way, since the shipped `Dockerfile` builds
+on Playwright's own image, which already carries the browser and its system
+libraries:
 
 ```bash
 docker build -t universcan .
@@ -920,21 +983,17 @@ docker run --rm -v "$PWD/reports:/reports" universcan \
   scan --url https://shop.example --jurisdictions "European Union" --out /reports
 ```
 
-### CI systems
+Two things matter if you adapt it:
 
-`.github/workflows/universcan.yml` is the worked GitHub example.
-`examples/ci/` has equivalents for **GitLab CI**, **Azure Pipelines**,
-**Jenkins** and **CircleCI**. All four follow the same shape: run `doctor`
-first so an environment fault is not mistaken for a finding, then scan, then
-publish `report.junit.xml` and the HTML artifact.
-
-Exit codes are what a pipeline should branch on:
-
-| Code | Meaning |
-| ---: | --- |
-| `0` | No findings at the fail-on severities. |
-| `1` | Findings at or above `--fail-on`. A compliance result. |
-| `2` | The scan could not run - bad input, no packs selected, nothing reachable. An infrastructure result, not a clean bill of health. |
+- **Pin the image tag to the resolved Playwright version**, not the caret
+  range. A driver newer than the image's browser builds fine and then fails
+  to launch. Check with `node -p "require('playwright/package.json').version"`.
+  The release workflow enforces this, so a mismatched image is never pushed.
+- **Run as a non-root user.** Chromium's setuid sandbox cannot start as uid
+  0. UniVerscan detects root and adds `--no-sandbox` automatically, logging
+  that it did, so a container works out of the box - but the sandbox is a
+  real protection, and the shipped `Dockerfile` uses `USER pwuser` to keep
+  it. `UNIVERSCAN_NO_SANDBOX=0` opts out of the automatic flag.
 
 ### Browsers, proxies and TLS
 
@@ -973,20 +1032,6 @@ a scanner that ignores certificates cannot report on transport security. If
 you set `browser.ignoreHTTPSErrors` anyway, the transport rules downgrade
 themselves to `not-evaluated` rather than reporting a pass they cannot
 justify.
-
-### Using it as a library
-
-The package is ESM-only, and says so precisely: `require()` throws a message
-telling you to use a dynamic import, rather than Node's opaque
-`ERR_PACKAGE_PATH_NOT_EXPORTED`.
-
-```js
-import { ScanEngine, loadConfig } from "universcan";        // ESM
-const { ScanEngine } = await import("universcan");           // from CommonJS
-```
-
-Requires **Node 18 or newer** (global `fetch`, `AbortSignal.timeout`); an
-even-numbered LTS line is recommended and `doctor` warns otherwise.
 
 ## Command reference
 
@@ -1131,18 +1176,25 @@ Two things to know:
 
 ### As a container
 
-```bash
-docker run --rm -v "$PWD/reports:/reports" \
-  ghcr.io/jomardyan/playwright-law-suite:latest \
-  scan --url https://shop.example --jurisdictions "European Union" --out /reports
-```
-
-The image is built on Playwright's own base, so Chromium and every system
-library it needs are already present, and it runs as a non-root user so the
-browser sandbox stays on. Useful under GitLab CI, Azure Pipelines and Jenkins,
-where a Node toolchain plus a browser download is the awkward part.
+`ghcr.io/jomardyan/playwright-law-suite` carries Chromium and its system
+libraries already, which is what makes it convenient outside GitHub Actions.
+See [Containers](#containers) for the command and the two things to watch if
+you build your own.
 
 ### As a CLI in any pipeline
+
+`examples/ci/` has worked configurations for **GitLab CI**, **Azure
+Pipelines**, **Jenkins** and **CircleCI**. All four follow the same shape:
+run `doctor` first so an environment fault is not mistaken for a finding,
+then scan, then publish `report.junit.xml` and the HTML artifact.
+
+Exit codes are what a pipeline should branch on:
+
+| Code | Meaning |
+| ---: | --- |
+| `0` | No findings at the fail-on severities. |
+| `1` | Findings at or above `--fail-on`. A compliance result. |
+| `2` | The scan could not run - bad input, no packs selected, nothing reachable. An infrastructure result, not a clean bill of health. |
 
 Tutorial Step 7 covers the gating strategy.
 `.github/workflows/universcan.yml` is a working GitHub Actions example: it
@@ -1214,15 +1266,41 @@ never present automated output as a legal compliance verdict).
 ## Development
 
 ```bash
+npm install
+npx playwright install --with-deps chromium
 npm run typecheck
+npm run build
 npm test
 npm run dev -- scan --url https://example.com
 ```
 
-The end-to-end tests drive a real Chromium against a local fixture server
-and are skipped automatically when no browser is available, so the unit
-suite still runs in a browser-less environment.
+`make check` runs typecheck, build and tests together.
+
+The end-to-end tests drive a real Chromium against a local fixture server.
+Without a browser they skip themselves and the rest of the suite still runs,
+which is convenient locally but means a green run is not automatically a
+complete one. `UNIVERSCAN_REQUIRE_CHROMIUM=1 npm test` turns a missing
+browser into a failure instead, which is what CI does.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full setup, what a change has to
+pass, and how to write a rule.
+
+## Project
+
+| | |
+| --- | --- |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Reporting a vulnerability | [SECURITY.md](SECURITY.md) |
+| Release history | [CHANGELOG.md](CHANGELOG.md) |
+| Code of conduct | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
+| Package | [npmjs.com/package/universcan](https://www.npmjs.com/package/universcan) |
+| Container image | [ghcr.io/jomardyan/playwright-law-suite](https://github.com/jomardyan/Playwright-Law-Suite/pkgs/container/playwright-law-suite) |
+| Issues | [github.com/jomardyan/Playwright-Law-Suite/issues](https://github.com/jomardyan/Playwright-Law-Suite/issues) |
 
 ## License
 
 MIT - see [LICENSE](./LICENSE).
+
+UniVerscan reports technical signals about a website. It is not legal advice
+and does not certify compliance with any regulation. Its output is evidence
+for a human review.

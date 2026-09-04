@@ -11,7 +11,23 @@ released artifacts.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- The README leads with a quick start and an accurate summary of what the
+  scanner ships, rather than an abstract and a table of contents. The
+  duplicated container, library and CI sections are merged into one each, and
+  the table of contents now lists every section instead of 27 of 40.
+
+### Fixed
+
+- The supported Node floor disagreed with itself: `engines.node` said `>=20`
+  while `doctor` still accepted 18, so it reported an environment as healthy
+  that npm refuses to install into. Both are 20, and a test pins them
+  together.
+- The Dockerfile declared `UNIVERSCAN_OUTPUT`, which nothing reads. It
+  implied a default output directory the tool does not honour, so a container
+  run without `--out` wrote reports inside the container and lost them. The
+  variable is gone and the documentation says to pass `--out`.
 
 ## [0.5.0] - 2026-09-04
 

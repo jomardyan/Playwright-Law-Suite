@@ -25,8 +25,13 @@ export interface CheckResult {
   hint?: string;
 }
 
-/** Lowest Node the code is known to work on: global fetch and AbortSignal.timeout. */
-export const MINIMUM_NODE_MAJOR = 18;
+/**
+ * Lowest Node the project supports, and it must match `engines.node` in
+ * package.json: a floor lower than that reports an environment as healthy
+ * that npm will refuse to install into. Node 18 reached end of life in April
+ * 2025; 20 is the oldest line CI exercises.
+ */
+export const MINIMUM_NODE_MAJOR = 20;
 
 export function checkNodeVersion(version: string = process.version): CheckResult {
   const major = Number.parseInt(version.replace(/^v/, "").split(".")[0] ?? "0", 10);

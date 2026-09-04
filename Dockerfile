@@ -23,7 +23,10 @@ COPY config ./config
 # --no-sandbox, which works but gives up a real protection.
 USER pwuser
 
-ENV UNIVERSCAN_OUTPUT=/reports
+# The output directory is chosen with --out, which is why the examples pass
+# `--out /reports`. There is deliberately no env var for it: one was declared
+# here previously that nothing read, which implied a default the tool did not
+# honour, so reports went to /app and were lost with the container.
 VOLUME ["/reports"]
 
 ENTRYPOINT ["node", "/app/dist/cli.js"]
