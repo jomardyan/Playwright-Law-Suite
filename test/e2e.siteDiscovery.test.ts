@@ -24,6 +24,26 @@ describe("canonicalizeRouteUrl", () => {
     );
   });
 
+  it("strips the site-internal referrer parameters publishers stamp on their own links", () => {
+    // `/` and `/?iref=pc_gnavi` were two routes on a real scan: the same page
+    // scanned twice, every per-page finding doubled, and a 403 for the second
+    // request.
+    expect(canonicalizeRouteUrl(new URL("https://example.com/?iref=pc_gnavi"))).toBe("https://example.com/");
+    expect(canonicalizeRouteUrl(new URL("https://example.com/a?at_medium=RSS&at_campaign=KARANGA"))).toBe(
+      "https://example.com/a"
+    );
+    expect(canonicalizeRouteUrl(new URL("https://example.com/b?ito=newsletter&smid=tw-share"))).toBe(
+      "https://example.com/b"
+    );
+  });
+
+  it("keeps parameters that might be the page's own identifier", () => {
+    // Stripping `id`, `cid`, `src` or `from` would merge distinct pages into
+    // one, which under-reports rather than over-reports.
+    expect(canonicalizeRouteUrl(new URL("https://example.com/article?id=42"))).toContain("id=42");
+    expect(canonicalizeRouteUrl(new URL("https://example.com/article?cid=42"))).toContain("cid=42");
+  });
+
   it("orders the remaining query so two spellings of one URL collapse", () => {
     expect(canonicalizeRouteUrl(new URL("https://example.com/a?b=2&a=1"))).toBe(
       canonicalizeRouteUrl(new URL("https://example.com/a?a=1&b=2"))

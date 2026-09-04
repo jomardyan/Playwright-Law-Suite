@@ -57,15 +57,30 @@ const TRACKING_PARAMS =
   /^(utm_[a-z_]+|gclid|gbraid|wbraid|dclid|fbclid|msclkid|ttclid|twclid|igshid|mc_[ce]id|_hs[a-z]*|yclid|s_kwcid|ref|referrer|source|campaign)$/i;
 
 /**
+ * Site-internal referrer and placement parameters. Publishers stamp these on
+ * their own navigation, so one page arrives under a dozen URLs: a scan of
+ * asahi.com took `/` and `/?iref=pc_gnavi` as two routes, doubled every
+ * per-page finding across them, and drew a 403 for the second request.
+ */
+const INTERNAL_REFERRER_PARAMS =
+  /^(iref|ito|iesrc|icid|cmp|cmpid|ncid|smid|spm|s_cid|sc_cid|WT\.mc_id|wt_mc|wtrid|at_medium|at_campaign|at_custom\d?|at_link[a-z_]*|ns_campaign|ns_mchannel|ns_source|ns_linkname|ns_fee|pk_(campaign|kwd|source|medium)|mtm_[a-z_]+|piwik_[a-z_]+|_ga|_gl|guccounter|guce_referrer(_sig)?|__twitter_impression|xtor)$/i;
+
+// Deliberately absent: `cid`, `id`, `src`, `from`, `share`, `p`. Each is used
+// as a campaign tag on some sites and as the page's own identifier on others,
+// and stripping a real identifier would merge distinct pages into one - a
+// worse error than scanning a duplicate.
+
+/**
  * Normalises a URL so two links to the same page become one route: the
- * fragment is dropped (it never reaches the server), tracking parameters are
- * stripped, and the remaining query is ordered.
+ * fragment is dropped (it never reaches the server), campaign and
+ * site-internal referrer parameters are stripped, and the remaining query is
+ * ordered.
  */
 export function canonicalizeRouteUrl(url: URL): string {
   const canonical = new URL(url.toString());
   canonical.hash = "";
   const kept = Array.from(canonical.searchParams.entries())
-    .filter(([name]) => !TRACKING_PARAMS.test(name))
+    .filter(([name]) => !TRACKING_PARAMS.test(name) && !INTERNAL_REFERRER_PARAMS.test(name))
     .sort(([a], [b]) => a.localeCompare(b));
   canonical.search = "";
   for (const [name, value] of kept) canonical.searchParams.append(name, value);

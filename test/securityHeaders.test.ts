@@ -3,6 +3,7 @@ import {
   analyzeSetCookieHeaders,
   EXPECTED_HEADERS,
   SESSION_COOKIE_PATTERN,
+  isSessionCredentialName,
 } from "../src/modules/security/SecurityHeaderScanner.js";
 
 describe("analyzeSetCookieHeaders", () => {
@@ -141,5 +142,41 @@ describe("SESSION_COOKIE_PATTERN", () => {
     for (const name of ["theme", "locale", "cart", "aside", "logintime", "consent", "_ga", "visitor_country"]) {
       expect(SESSION_COOKIE_PATTERN.test(name), name).toBe(false);
     }
+  });
+});
+
+describe("isSessionCredentialName", () => {
+  it("recognises a credential cookie", () => {
+    for (const name of ["sessionid", "auth_token", "JSESSIONID", "remember_me", "jwt"]) {
+      expect(isSessionCredentialName(name), name).toBe(true);
+    }
+  });
+
+  it("does not treat a measurement session as a credential", () => {
+    // Every one of these was reported as a credential exposure at violation
+    // severity on a real site, ahead of the cookie that might have mattered.
+    for (const name of ["analytics_session_id", "wt_mcp_sid", "__lt__sid", "ch_sid", "_ga_sid", "ajs_anonymous_id"]) {
+      expect(isSessionCredentialName(name), name).toBe(false);
+    }
+  });
+});
+
+describe("CSRF tokens and HttpOnly", () => {
+  it("does not require HttpOnly on a CSRF token", () => {
+    // The double-submit-cookie pattern needs script to read it: Django,
+    // Laravel and Angular all ship it that way deliberately, so python.org's
+    // `csrftoken` was being reported for a rule it cannot satisfy.
+    const issues = analyzeSetCookieHeaders(["csrftoken=abc; Path=/; Secure; SameSite=Lax"], true, "python.org");
+    expect(issues.some((i) => i.problem === "no-httponly")).toBe(false);
+  });
+
+  it("still requires Secure on a CSRF token", () => {
+    const issues = analyzeSetCookieHeaders(["csrftoken=abc; Path=/; SameSite=Lax"], true, "python.org");
+    expect(issues.some((i) => i.problem === "not-secure-on-https")).toBe(true);
+  });
+
+  it("does not raise a no-httponly issue for an analytics session cookie", () => {
+    const issues = analyzeSetCookieHeaders(["analytics_session_id=1; Path=/; Secure; SameSite=Lax"], true, "x.test");
+    expect(issues.some((i) => i.problem === "no-httponly")).toBe(false);
   });
 });

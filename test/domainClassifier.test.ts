@@ -127,3 +127,85 @@ describe("tracker categories", () => {
     expect(classifyDomain("www.linkedin.com").category).toBe("social-plugin");
   });
 });
+
+describe("inferred tracker classification", () => {
+  it("classifies the RTB tail no static list can enumerate", () => {
+    // A run over 16 public sites left 412 of 613 third-party records
+    // unclassified; sampling them showed almost all were ad tech. These are
+    // real hosts from that sample.
+    const cases: Array<[string, string]> = [
+      ["ad.360yield.com", "advertising"],
+      ["ads.yieldmo.com", "advertising"],
+      ["rtb.gumgum.com", "advertising"],
+      ["sync.mathtag.com", "data-broker"],
+      ["cs.media.net", "data-broker"],
+      ["cm.mgid.com", "data-broker"],
+      ["match.deepintent.com", "data-broker"],
+      ["um.simpli.fi", "data-broker"],
+      ["px.ladsp.com", "advertising"],
+      ["tracker.example-vendor.test", "analytics"],
+      ["analytics.python.org", "analytics"],
+      ["gumgum-match.dotomi.com", "data-broker"],
+    ];
+    for (const [host, category] of cases) {
+      const result = classifyDomain(host);
+      expect(isNonEssentialTrackingCategory(result.category), `${host} -> ${result.category}`).toBe(true);
+      if (result.evidence === "inferred") expect(result.category, host).toBe(category);
+    }
+  });
+
+  it("marks an inferred classification as inferred, so no rule asserts it as a fact", () => {
+    const result = classifyDomain("sync.some-unknown-vendor.test");
+    expect(result.evidence).toBe("inferred");
+    expect(result.inferredFrom).toMatch(/cookie-sync/);
+    expect(result.service).toMatch(/unnamed service/);
+  });
+
+  it("keeps a named service marked as known", () => {
+    const result = classifyDomain("www.google-analytics.com");
+    expect(result.evidence).toBe("known");
+    expect(result.service).toBe("Google Analytics");
+  });
+
+  it("does not infer tracking from ordinary infrastructure host names", () => {
+    // These all appeared in the same sample and must stay unclassified: a
+    // false "tracker" here would be a finding about nothing.
+    for (const host of [
+      "api.hubapi.com",
+      "cdn.schemaapp.com",
+      "static.bbci.co.uk",
+      "static01.nyt.com",
+      "img.lemde.fr",
+      "play.google.com",
+      "pay.google.com",
+      "accounts.google.com",
+      "images.stripeassets.com",
+      "apm.yahoo.co.jp",
+    ]) {
+      const result = classifyDomain(host);
+      expect(result.evidence, `${host} -> ${result.category}`).not.toBe("inferred");
+    }
+  });
+
+  it("infers from the request path when the host name says nothing", () => {
+    expect(classifyDomain("edge.example-vendor.test").evidence).toBe("unknown");
+    const withPath = classifyDomain("edge.example-vendor.test", "https://edge.example-vendor.test/usersync?p=1");
+    expect(withPath.evidence).toBe("inferred");
+    expect(withPath.category).toBe("data-broker");
+  });
+
+  it("names the ad-tech services seen in the sample rather than inferring them", () => {
+    for (const [host, service] of [
+      ["munchkin.marketo.net", "Adobe Marketo"],
+      ["media.ethicalads.io", "EthicalAds"],
+      ["secure-us.imrworldwide.com", "Nielsen"],
+      ["cdn.doubleverify.com", "DoubleVerify"],
+      ["i.liadm.com", "LiveIntent"],
+      ["static.criteo.net", "Criteo"],
+    ] as Array<[string, string]>) {
+      const result = classifyDomain(host);
+      expect(result.evidence, host).toBe("known");
+      expect(result.service, host).toBe(service);
+    }
+  });
+});

@@ -70,8 +70,18 @@ export function trackingBeforeConsentRule(identity: PackIdentity, framing: RuleF
       const findings: Finding[] = [];
       for (const page of context.pages) {
         if (!page.consentFlow) continue;
-        const offenders = page.consentFlow.requestsBeforeAnyConsentAction.filter((request) =>
-          isNonEssentialTrackingCategory(classifyDomain(request.domain).category)
+        // Split by how the service was recognised. A named tracker is a
+        // fact; a host classified only from a `sync.`/`rtb.` marker is a
+        // strong signal that must not be asserted as a breach on its own.
+        const classified = page.consentFlow.requestsBeforeAnyConsentAction.map((request) => ({
+          request,
+          classification: classifyDomain(request.domain, request.url),
+        }));
+        const offenders = classified
+          .filter((entry) => entry.classification.evidence === "known" && isNonEssentialTrackingCategory(entry.classification.category))
+          .map((entry) => entry.request);
+        const inferredOffenders = classified.filter(
+          (entry) => entry.classification.evidence === "inferred" && isNonEssentialTrackingCategory(entry.classification.category)
         );
         // Storage counts as much as traffic. Art. 5(3) ePrivacy and its
         // equivalents govern the storing of, and access to, information on
@@ -83,7 +93,7 @@ export function trackingBeforeConsentRule(identity: PackIdentity, framing: RuleF
         const storageOffenders = beforeConsent
           ? findTrackingStorage(beforeConsent).filter((entry) => isNonEssentialTrackingCategory(entry.category))
           : [];
-        if (offenders.length === 0 && storageOffenders.length === 0) continue;
+        if (offenders.length === 0 && storageOffenders.length === 0 && inferredOffenders.length === 0) continue;
 
         const domains = Array.from(new Set(offenders.map((request) => request.domain)));
         const observed: string[] = [];
@@ -100,21 +110,46 @@ export function trackingBeforeConsentRule(identity: PackIdentity, framing: RuleF
           );
         }
 
+        const visits = page.consentFlow.beforeConsentVisits;
+        if (visits && visits >= 2) {
+          observed.push(`The pre-consent state was measured across ${visits} independent no-interaction visits.`);
+        }
+
         const evidence = [];
         if (offenders.length > 0) evidence.push(context.evidence.requestLog("Pre-consent third-party requests", offenders));
         if (storageOffenders.length > 0) evidence.push(context.evidence.note("Pre-consent tracking storage", storageOffenders));
 
-        findings.push(
-          buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
-            status: "violation",
-            affectedUrl: page.url,
-            affectedElement: domains.join(", ") || storageOffenders.map((entry) => entry.key).join(", "),
-            observedBehavior: observed.join(" "),
-            expectedBehavior: "No non-essential tracking, and no non-essential storage on the device, before the visitor opts in.",
-            evidence,
-            manualReviewRequired: false,
-          })
-        );
+        if (offenders.length > 0 || storageOffenders.length > 0) {
+          findings.push(
+            buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
+              status: "violation",
+              affectedUrl: page.url,
+              affectedElement: domains.join(", ") || storageOffenders.map((entry) => entry.key).join(", "),
+              observedBehavior: observed.join(" "),
+              expectedBehavior: "No non-essential tracking, and no non-essential storage on the device, before the visitor opts in.",
+              evidence,
+              manualReviewRequired: false,
+            })
+          );
+        }
+
+        if (inferredOffenders.length > 0) {
+          const inferredDomains = Array.from(new Set(inferredOffenders.map((entry) => entry.request.domain)));
+          findings.push(
+            buildFinding(rule, identity.packId, identity.regulation, identity.jurisdiction, {
+              status: "probable-violation",
+              affectedUrl: page.url,
+              affectedElement: inferredDomains.join(", "),
+              observedBehavior: `${inferredOffenders.length} request(s) fired before any consent action to host(s) this scanner does not know by name but which carry unmistakable tracking markers: ${inferredOffenders
+                .map((entry) => `${entry.request.domain} (${entry.classification.inferredFrom})`)
+                .slice(0, 12)
+                .join(", ")}${inferredOffenders.length > 12 ? ", ..." : ""}. The category was inferred from the host and request path, not from a named service, so confirm what each one is.`,
+              expectedBehavior: "No non-essential tracking before the visitor opts in.",
+              evidence: [context.evidence.requestLog("Pre-consent requests classified by URL pattern", inferredOffenders.map((entry) => entry.request))],
+              manualReviewRequired: true,
+            })
+          );
+        }
       }
       return findings;
     },

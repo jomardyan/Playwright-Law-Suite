@@ -28,7 +28,8 @@
     "enabled": true,
     "testWithdrawal": true,
     "probeGlobalPrivacyControl": true,
-    "settleMs": 1500
+    "settleMs": 1500,
+    "beforeConsentVisits": 2
   },
   "reporting": {
     "formats": [

@@ -10,6 +10,8 @@ interface TrackedRequest {
   domain: string;
   resourceType: string;
   timestamp: string;
+  /** Which no-interaction visit observed this request, 1-based. */
+  visit?: number;
 }
 
 /**
@@ -74,7 +76,7 @@ async function captureBrowserState(page: Page, requests: TrackedRequest[], conse
   };
 }
 
-function attachRequestTracking(context: BrowserContext, requests: TrackedRequest[]): void {
+function attachRequestTracking(context: BrowserContext, requests: TrackedRequest[], visit?: number): void {
   context.on("request", (request) => {
     const url = request.url();
     // `data:`, `blob:` and extension URLs never leave the browser. Recording
@@ -87,6 +89,7 @@ function attachRequestTracking(context: BrowserContext, requests: TrackedRequest
       domain,
       resourceType: request.resourceType(),
       timestamp: new Date().toISOString(),
+      ...(visit === undefined ? {} : { visit }),
     });
   });
 }
@@ -195,8 +198,17 @@ export interface ConsentFlowResult {
   bannerDetected?: boolean;
   /** True when the accept control was found but could not actually be clicked. */
   acceptControlNotClickable?: boolean;
-  /** Requests observed on the very first paint, before any consent interaction. */
+  /**
+   * Requests observed before any consent interaction, unioned across every
+   * no-interaction visit. Each entry records which visit saw it.
+   */
   requestsBeforeAnyConsentAction: TrackedRequest[];
+  /**
+   * How many no-interaction visits the pre-consent result rests on. Optional
+   * so a hand-built result is not forced to claim a number; `undefined` means
+   * the basis was not recorded.
+   */
+  beforeConsentVisits?: number;
 }
 
 /**
@@ -216,17 +228,49 @@ export class CookieScanner {
     const states: CapturedState[] = [];
     let gpcProbeRan = false;
 
-    // --- Initial visit: no interaction with any consent control. ---
-    const initialContext = await this.browserManager.newContext();
+    // --- No-interaction visits. ---
+    //
+    // Repeated deliberately. A site does not load the same set of trackers on
+    // every request: two consecutive scans of the same page observed 36
+    // third-party services before consent and then 3, which turned a critical
+    // finding into silence without anything changing on the site. The visits
+    // are independent (a fresh context each time) and their observations are
+    // unioned, so a tracker that fires on some loads is still reported.
+    const visits = Math.max(1, Math.min(5, this.config.beforeConsentVisits ?? 2));
     const initialRequests: TrackedRequest[] = [];
-    attachRequestTracking(initialContext, initialRequests);
-    const initialPage = await initialContext.newPage();
-    await initialPage.goto(url, { waitUntil: "networkidle", timeout: 30_000 }).catch(() => undefined);
-    await initialPage.waitForTimeout(this.settleMs);
-    const bannerDetected = await detectBanner(initialPage).catch(() => false);
-    const initialState = await captureBrowserState(initialPage, initialRequests, "before-consent");
-    states.push(initialState);
-    await initialContext.close();
+    const unionCookies = new Map<string, CapturedState["cookies"][number]>();
+    const unionLocal = new Set<string>();
+    const unionSession = new Set<string>();
+    let bannerDetected = false;
+    let lastVisitedUrl = url;
+
+    for (let visit = 1; visit <= visits; visit += 1) {
+      const visitContext = await this.browserManager.newContext();
+      const visitRequests: TrackedRequest[] = [];
+      attachRequestTracking(visitContext, visitRequests, visit);
+      const visitPage = await visitContext.newPage();
+      await visitPage.goto(url, { waitUntil: "networkidle", timeout: 30_000 }).catch(() => undefined);
+      await visitPage.waitForTimeout(this.settleMs);
+      // A banner seen on any visit is a banner the site has; some sites show
+      // it only to a fraction of requests.
+      bannerDetected = bannerDetected || (await detectBanner(visitPage).catch(() => false));
+      const state = await captureBrowserState(visitPage, visitRequests, "before-consent");
+      lastVisitedUrl = state.url;
+      initialRequests.push(...visitRequests);
+      for (const cookie of state.cookies) unionCookies.set(`${cookie.name}|${cookie.domain}`, cookie);
+      for (const key of state.localStorageKeys) unionLocal.add(key);
+      for (const key of state.sessionStorageKeys) unionSession.add(key);
+      await visitContext.close();
+    }
+
+    states.push({
+      consentState: "before-consent",
+      url: lastVisitedUrl,
+      cookies: Array.from(unionCookies.values()),
+      localStorageKeys: Array.from(unionLocal),
+      sessionStorageKeys: Array.from(unionSession),
+      thirdPartyRequests: [...initialRequests],
+    });
 
     let bannerRejectControlFound = false;
     let bannerAcceptControlFound = false;
@@ -296,6 +340,7 @@ export class CookieScanner {
       bannerDetected,
       acceptControlNotClickable,
       requestsBeforeAnyConsentAction: initialRequests,
+      beforeConsentVisits: visits,
     };
   }
 

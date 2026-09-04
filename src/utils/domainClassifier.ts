@@ -354,6 +354,204 @@ const DOMAIN_CATEGORY_MAP: Array<{ pattern: RegExp; category: string; service: s
   { pattern: /(^|\.)raygun\.io$/, category: "monitoring", service: "Raygun" },
   { pattern: /(^|\.)pingdom\.net$/, category: "monitoring", service: "Pingdom" },
 
+
+  // --- Programmatic advertising, SSPs, DSPs and exchanges ---
+  //
+  // Added from real scans: a run over 16 public sites left 412 of 613
+  // third-party records as `unknown-third-party`, and sampling them showed
+  // almost all were RTB infrastructure. A domain the map does not know is a
+  // tracker no consent rule can flag, so the recurring ones are named here
+  // and the tail is handled by `inferTrackingCategory`.
+  { pattern: /(^|\.)360yield\.com$/, category: "advertising", service: "Improve Digital" },
+  { pattern: /(^|\.)3lift\.com$/, category: "advertising", service: "TripleLift" },
+  { pattern: /(^|\.)1rx\.io$/, category: "advertising", service: "RhythmOne" },
+  { pattern: /(^|\.)a-mo\.net$/, category: "advertising", service: "Amobee" },
+  { pattern: /(^|\.)adentifi\.com$/, category: "advertising", service: "AdTheorent" },
+  { pattern: /(^|\.)adform\.net$/, category: "advertising", service: "Adform" },
+  { pattern: /(^|\.)adgrx\.com$/, category: "advertising", service: "AdGear" },
+  { pattern: /(^|\.)adingo\.jp$/, category: "advertising", service: "Fluct" },
+  { pattern: /(^|\.)adition\.com$/, category: "advertising", service: "Adition" },
+  { pattern: /(^|\.)adkernel\.com$/, category: "advertising", service: "AdKernel" },
+  { pattern: /(^|\.)admanmedia\.com$/, category: "advertising", service: "AdMan Media" },
+  { pattern: /(^|\.)admaster\.cc$/, category: "advertising", service: "AdMaster" },
+  { pattern: /(^|\.)ad-stir\.com$/, category: "advertising", service: "AdStir" },
+  { pattern: /(^|\.)adtdp\.com$/, category: "advertising", service: "AJA / adtdp" },
+  { pattern: /(^|\.)adtech\.ink$/, category: "advertising", service: "AdTech.ink" },
+  { pattern: /(^|\.)adtrafficquality\.google$/, category: "advertising", service: "Google Ad Traffic Quality" },
+  { pattern: /(^|\.)adsrvr\.org$/, category: "advertising", service: "The Trade Desk" },
+  { pattern: /(^|\.)advolve\.io$/, category: "advertising", service: "Advolve" },
+  { pattern: /(^|\.)aniview\.com$/, category: "advertising", service: "Aniview" },
+  { pattern: /(^|\.)appier\.net$/, category: "advertising", service: "Appier" },
+  { pattern: /(^|\.)appnerve\.net$/, category: "advertising", service: "AppNerve" },
+  { pattern: /(^|\.)aralego\.com$/, category: "advertising", service: "Aralego" },
+  { pattern: /(^|\.)balance-x\.com$/, category: "advertising", service: "Balance-X" },
+  { pattern: /(^|\.)bidr\.io$/, category: "advertising", service: "Beeswax" },
+  { pattern: /(^|\.)bidswitch\.net$/, category: "advertising", service: "BidSwitch" },
+  { pattern: /(^|\.)bidtheatre\.com$/, category: "advertising", service: "BidTheatre" },
+  { pattern: /(^|\.)blismedia\.com$/, category: "advertising", service: "Blis" },
+  { pattern: /(^|\.)bttrack\.com$/, category: "advertising", service: "Bidtellect" },
+  { pattern: /(^|\.)caprofitx\.com$/, category: "advertising", service: "CA ProFit-X" },
+  { pattern: /(^|\.)chocolateplatform\.com$/, category: "advertising", service: "Chocolate Platform" },
+  { pattern: /(^|\.)connatix\.com$/, category: "advertising", service: "Connatix" },
+  { pattern: /(^|\.)connectad\.io$/, category: "advertising", service: "ConnectAd" },
+  { pattern: /(^|\.)contextweb\.com$/, category: "advertising", service: "PulsePoint" },
+  { pattern: /(^|\.)copper6\.com$/, category: "advertising", service: "Copper6" },
+  { pattern: /(^|\.)creative-serving\.com$/, category: "advertising", service: "Platform161" },
+  { pattern: /(^|\.)creativecdn\.com$/, category: "advertising", service: "RTB House" },
+  { pattern: /(^|\.)de17a\.com$/, category: "advertising", service: "Sift Media" },
+  { pattern: /(^|\.)deepintent\.com$/, category: "advertising", service: "DeepIntent" },
+  { pattern: /(^|\.)dotomi\.com$/, category: "advertising", service: "Conversant / Epsilon" },
+  { pattern: /(^|\.)emxdgt\.com$/, category: "advertising", service: "EMX Digital" },
+  { pattern: /(^|\.)ethicalads\.io$/, category: "advertising", service: "EthicalAds" },
+  { pattern: /(^|\.)flvcdn\.net$/, category: "advertising", service: "Flashtalking" },
+  { pattern: /(^|\.)fout\.jp$/, category: "advertising", service: "FOUT" },
+  { pattern: /(^|\.)fwmrm\.net$/, category: "advertising", service: "FreeWheel" },
+  { pattern: /(^|\.)gmossp-sp\.jp$/, category: "advertising", service: "GMO SSP" },
+  { pattern: /(^|\.)gssprt\.jp$/, category: "advertising", service: "GenieeSSP" },
+  { pattern: /(^|\.)gumgum\.com$/, category: "advertising", service: "GumGum" },
+  { pattern: /(^|\.)indexww\.com$/, category: "advertising", service: "Index Exchange" },
+  { pattern: /(^|\.)ingage\.tech$/, category: "advertising", service: "Ingage" },
+  { pattern: /(^|\.)inmobi\.com$/, category: "advertising", service: "InMobi" },
+  { pattern: /(^|\.)ipredictive\.com$/, category: "advertising", service: "Adelphic" },
+  { pattern: /(^|\.)iprom\.net$/, category: "advertising", service: "iPROM" },
+  { pattern: /(^|\.)iqm\.com$/, category: "advertising", service: "IQM" },
+  { pattern: /(^|\.)iqzonertb\.live$/, category: "advertising", service: "IQzone" },
+  { pattern: /(^|\.)kargo\.com$/, category: "advertising", service: "Kargo" },
+  { pattern: /(^|\.)krushmedia\.com$/, category: "advertising", service: "Krush Media" },
+  { pattern: /(^|\.)ladsp\.com$/, category: "advertising", service: "Logly" },
+  { pattern: /(^|\.)liftdsp\.com$/, category: "advertising", service: "Lift DSP" },
+  { pattern: /(^|\.)lijit\.com$/, category: "advertising", service: "Sovrn" },
+  { pattern: /(^|\.)loopme\.me$/, category: "advertising", service: "LoopMe" },
+  { pattern: /(^|\.)loudecho\.ai$/, category: "advertising", service: "LoudEcho" },
+  { pattern: /(^|\.)mathtag\.com$/, category: "advertising", service: "MediaMath" },
+  { pattern: /(^|\.)media\.net$/, category: "advertising", service: "Media.net" },
+  { pattern: /(^|\.)mediago\.io$/, category: "advertising", service: "MediaGo" },
+  { pattern: /(^|\.)mfadsrvr\.com$/, category: "advertising", service: "MobileFuse" },
+  { pattern: /(^|\.)mgid\.com$/, category: "advertising", service: "MGID" },
+  { pattern: /(^|\.)microad\.jp$/, category: "advertising", service: "MicroAd" },
+  { pattern: /(^|\.)minutemedia-prebid\.com$/, category: "advertising", service: "Minute Media (Prebid)" },
+  { pattern: /(^|\.)moloco\.com$/, category: "advertising", service: "Moloco" },
+  { pattern: /(^|\.)mxptint\.net$/, category: "advertising", service: "MediaX" },
+  { pattern: /(^|\.)nrich\.ai$/, category: "advertising", service: "nRich" },
+  { pattern: /(^|\.)omnitagjs\.com$/, category: "advertising", service: "Adyoulike" },
+  { pattern: /(^|\.)onetag-sys\.com$/, category: "advertising", service: "OneTag" },
+  { pattern: /(^|\.)s-onetag\.com$/, category: "advertising", service: "OneTag" },
+  { pattern: /(^|\.)openwebmp\.com$/, category: "advertising", service: "OpenWeb" },
+  { pattern: /(^|\.)openxcdn\.net$/, category: "advertising", service: "OpenX" },
+  { pattern: /(^|\.)p7cloud\.net$/, category: "advertising", service: "Platform One" },
+  { pattern: /(^|\.)pa-cd\.com$/, category: "advertising", service: "Perion" },
+  { pattern: /(^|\.)pangle-ads\.com$/, category: "advertising", service: "Pangle (ByteDance)" },
+  { pattern: /(^|\.)pgammedia\.com$/, category: "advertising", service: "PGAM" },
+  { pattern: /(^|\.)pmbmonetize\.live$/, category: "advertising", service: "PMB Monetize" },
+  { pattern: /(^|\.)postrelease\.com$/, category: "advertising", service: "Nativo" },
+  { pattern: /(^|\.)presage\.io$/, category: "advertising", service: "Ogury" },
+  { pattern: /(^|\.)primis\.tech$/, category: "advertising", service: "Primis" },
+  { pattern: /(^|\.)rbstsystems\.live$/, category: "advertising", service: "RBST Systems" },
+  { pattern: /(^|\.)resetdigital\.co$/, category: "advertising", service: "Reset Digital" },
+  { pattern: /(^|\.)rfihub\.com$/, category: "advertising", service: "Rocket Fuel / Criteo" },
+  { pattern: /(^|\.)richaudience\.com$/, category: "advertising", service: "Rich Audience" },
+  { pattern: /(^|\.)rtbsystem\.com$/, category: "advertising", service: "RTB System" },
+  { pattern: /(^|\.)seedtag\.com$/, category: "advertising", service: "Seedtag" },
+  { pattern: /(^|\.)simpli\.fi$/, category: "advertising", service: "Simpli.fi" },
+  { pattern: /(^|\.)sitescout\.com$/, category: "advertising", service: "SiteScout" },
+  { pattern: /(^|\.)slim02\.jp$/, category: "advertising", service: "Slim02" },
+  { pattern: /(^|\.)smaato\.net$/, category: "advertising", service: "Smaato" },
+  { pattern: /(^|\.)smilewanted\.com$/, category: "advertising", service: "SmileWanted" },
+  { pattern: /(^|\.)socdm\.com$/, category: "advertising", service: "Supership / Ad Generation" },
+  { pattern: /(^|\.)sonobi\.com$/, category: "advertising", service: "Sonobi" },
+  { pattern: /(^|\.)spotxchange\.com$/, category: "advertising", service: "SpotX / Magnite" },
+  { pattern: /(^|\.)springserve\.com$/, category: "advertising", service: "SpringServe" },
+  { pattern: /(^|\.)stackadapt\.com$/, category: "advertising", service: "StackAdapt" },
+  { pattern: /(^|\.)syncingbridge\.com$/, category: "advertising", service: "Syncing Bridge" },
+  { pattern: /(^|\.)theagenticx\.ai$/, category: "advertising", service: "AgenticX" },
+  { pattern: /(^|\.)tracookiepixel\.xyz$/, category: "advertising", service: "unnamed pixel service" },
+  { pattern: /(^|\.)tremorhub\.com$/, category: "advertising", service: "Tremor / Nexxen" },
+  { pattern: /(^|\.)tribalfusion\.com$/, category: "advertising", service: "Exponential" },
+  { pattern: /(^|\.)turn\.com$/, category: "advertising", service: "Amobee" },
+  { pattern: /(^|\.)uncn\.jp$/, category: "advertising", service: "Unicorn" },
+  { pattern: /(^|\.)vistarsagency\.com$/, category: "advertising", service: "Vistars" },
+  { pattern: /(^|\.)yieldlab\.net$/, category: "advertising", service: "Yieldlab" },
+  { pattern: /(^|\.)yieldmo\.com$/, category: "advertising", service: "Yieldmo" },
+  { pattern: /(^|\.)ymmobi\.com$/, category: "advertising", service: "YM Mobi" },
+  { pattern: /(^|\.)zemanta\.com$/, category: "advertising", service: "Zemanta / Outbrain" },
+
+  // --- Ad verification and viewability, which measure the same impression ---
+  { pattern: /(^|\.)doubleverify\.com$/, category: "advertising", service: "DoubleVerify" },
+  { pattern: /(^|\.)dv\.tech$/, category: "advertising", service: "DoubleVerify" },
+  { pattern: /(^|\.)geoedge\.be$/, category: "advertising", service: "GeoEdge" },
+  { pattern: /(^|\.)insurads\.com$/, category: "advertising", service: "InsurAds" },
+  { pattern: /(^|\.)brandmetrics\.com$/, category: "advertising", service: "Brandmetrics" },
+  { pattern: /(^|\.)webcontentassessor\.com$/, category: "advertising", service: "Web Content Assessor" },
+  { pattern: /(^|\.)usbrowserspeed\.com$/, category: "fingerprinting", service: "Adloox" },
+
+  // --- Identity resolution and data brokerage ---
+  { pattern: /(^|\.)anonymised\.io$/, category: "data-broker", service: "Anonymised" },
+  { pattern: /(^|\.)company-target\.com$/, category: "data-broker", service: "Demandbase" },
+  { pattern: /(^|\.)demandbase\.com$/, category: "data-broker", service: "Demandbase" },
+  { pattern: /(^|\.)digitalaudience\.io$/, category: "data-broker", service: "Digital Audience" },
+  { pattern: /(^|\.)eu-1-id5-sync\.com$/, category: "data-broker", service: "ID5" },
+  { pattern: /(^|\.)exelator\.com$/, category: "data-broker", service: "Nielsen eXelate" },
+  { pattern: /(^|\.)eyeota\.net$/, category: "data-broker", service: "Eyeota" },
+  { pattern: /(^|\.)geistm\.com$/, category: "data-broker", service: "GeistM" },
+  { pattern: /(^|\.)intentiq\.com$/, category: "data-broker", service: "Intent IQ" },
+  { pattern: /(^|\.)liadm\.com$/, category: "data-broker", service: "LiveIntent" },
+  { pattern: /(^|\.)marketiq\.com$/, category: "data-broker", service: "MarketIQ" },
+  { pattern: /(^|\.)ml-api\.io$/, category: "data-broker", service: "MediaLab" },
+  { pattern: /(^|\.)ml-attr\.io$/, category: "data-broker", service: "MediaLab" },
+  { pattern: /(^|\.)onaudience\.com$/, category: "data-broker", service: "OnAudience" },
+  { pattern: /(^|\.)pdscrb\.com$/, category: "data-broker", service: "Pubmatic Identity" },
+  { pattern: /(^|\.)pippio\.com$/, category: "data-broker", service: "LiveRamp" },
+  { pattern: /(^|\.)semasio\.net$/, category: "data-broker", service: "Semasio" },
+  { pattern: /(^|\.)zi-scripts\.com$/, category: "data-broker", service: "ZoomInfo" },
+  { pattern: /(^|\.)zoominfo\.com$/, category: "data-broker", service: "ZoomInfo" },
+
+  // --- Analytics, measurement and audience platforms ---
+  { pattern: /(^|\.)4dex\.io$/, category: "analytics", service: "4Dex" },
+  { pattern: /(^|\.)acuityplatform\.com$/, category: "advertising", service: "AcuityAds" },
+  { pattern: /(^|\.)blendee\.com$/, category: "marketing-automation", service: "Blendee" },
+  { pattern: /(^|\.)cognitivlabs\.com$/, category: "analytics", service: "Cognitiv" },
+  { pattern: /(^|\.)cxense\.com$/, category: "analytics", service: "Piano / Cxense" },
+  { pattern: /(^|\.)cxpublic\.com$/, category: "analytics", service: "Piano / Cxense" },
+  { pattern: /(^|\.)dotmetrics\.net$/, category: "analytics", service: "Dotmetrics" },
+  { pattern: /(^|\.)edigitalsurvey\.com$/, category: "analytics", service: "eDigitalResearch" },
+  { pattern: /(^|\.)imrworldwide\.com$/, category: "analytics", service: "Nielsen" },
+  { pattern: /(^|\.)im-apps\.net$/, category: "analytics", service: "Intimate Merger" },
+  { pattern: /(^|\.)iteratehq\.com$/, category: "analytics", service: "Iterate" },
+  { pattern: /(^|\.)macromill\.com$/, category: "analytics", service: "Macromill" },
+  { pattern: /(^|\.)mparticle\.com$/, category: "analytics", service: "mParticle" },
+  { pattern: /(^|\.)neodatagroup\.com$/, category: "analytics", service: "Neodata" },
+  { pattern: /(^|\.)permutive\.com$/, category: "data-broker", service: "Permutive" },
+  { pattern: /(^|\.)piano\.io$/, category: "analytics", service: "Piano" },
+  { pattern: /(^|\.)tinypass\.com$/, category: "analytics", service: "Piano" },
+  { pattern: /(^|\.)pocustrack\.com$/, category: "analytics", service: "Pocus" },
+  { pattern: /(^|\.)speedcurve\.com$/, category: "monitoring", service: "SpeedCurve" },
+  { pattern: /(^|\.)treasuredata\.com$/, category: "analytics", service: "Treasure Data" },
+  { pattern: /(^|\.)tynt\.com$/, category: "analytics", service: "Tynt / 33Across" },
+  { pattern: /(^|\.)vector\.co$/, category: "analytics", service: "Vector" },
+  { pattern: /(^|\.)pacvue\.com$/, category: "analytics", service: "Pacvue" },
+
+  // --- Marketing automation and engagement ---
+  { pattern: /(^|\.)appsflyer\.com$/, category: "marketing-automation", service: "AppsFlyer" },
+  { pattern: /(^|\.)hs-banner\.com$/, category: "marketing-automation", service: "HubSpot" },
+  { pattern: /(^|\.)hsadspixel\.net$/, category: "advertising", service: "HubSpot Ads" },
+  { pattern: /(^|\.)hsforms\.com$/, category: "marketing-automation", service: "HubSpot" },
+  { pattern: /(^|\.)hubapi\.com$/, category: "marketing-automation", service: "HubSpot" },
+  { pattern: /(^|\.)usemessages\.com$/, category: "marketing-automation", service: "HubSpot" },
+  { pattern: /(^|\.)onesignal\.com$/, category: "marketing-automation", service: "OneSignal" },
+  { pattern: /(^|\.)webpush\.jp$/, category: "marketing-automation", service: "WebPush" },
+  { pattern: /(^|\.)pages07\.net$/, category: "marketing-automation", service: "Oracle Eloqua" },
+
+  // --- Consent and preference platforms observed in the wild ---
+  { pattern: /(^|\.)privacymanager\.io$/, category: "consent-management", service: "InMobi Choice" },
+  { pattern: /(^|\.)privacy-mgmt\.com$/, category: "consent-management", service: "Sourcepoint" },
+  { pattern: /(^|\.)transcend-cdn\.com$/, category: "consent-management", service: "Transcend" },
+  { pattern: /(^|\.)opecloud\.com$/, category: "consent-management", service: "OneTrust / Opecloud" },
+  { pattern: /(^|\.)ccgateway\.net$/, category: "consent-management", service: "Consent gateway" },
+
+  // --- Identity/CIAM and comment platforms ---
+  { pattern: /(^|\.)gigya\.com$/, category: "crm", service: "SAP Customer Data Cloud" },
+  { pattern: /(^|\.)spot\.im$/, category: "social-plugin", service: "OpenWeb / Spot.IM" },
+
   // --- Broad-surface hosts kept last, so a specific subdomain above wins ---
   { pattern: /(^|\.)googleapis\.com$/, category: "cdn", service: "Google APIs" },
   { pattern: /(^|\.)google\.com$/, category: "unknown-third-party", service: "Google (unclassified endpoint)" },
@@ -363,16 +561,164 @@ export interface DomainClassification {
   domain: string;
   category: string;
   service: string;
+  /**
+   * How the category was arrived at.
+   *
+   * `known` - the host matched the static map, which names the service.
+   * `inferred` - the host or request path carries an unmistakable tracking
+   *   marker (`sync.`, `pixel.`, `rtb.`, `/usersync`, ...) but the service is
+   *   not named here. A rule may act on this, but must say the category was
+   *   inferred and must not assert a breach on it alone.
+   * `unknown` - nothing was established. Surfaced for review, never flagged.
+   */
+  evidence: "known" | "inferred" | "unknown";
+  /** For an inferred classification, the marker that produced it. */
+  inferredFrom?: string;
 }
 
-export function classifyDomain(domain: string): DomainClassification {
+/**
+ * Host labels that only appear on tracking infrastructure.
+ *
+ * The real-scan sample behind this: 412 of 613 third-party records over 16
+ * public sites were `unknown-third-party`, and the hosts were things like
+ * `sync.mathtag.com`, `cs.media.net`, `match.deepintent.com`,
+ * `ad.360yield.com`, `px.ladsp.com`. A static map will never enumerate the
+ * RTB ecosystem, and leaving them unclassified means no consent rule can see
+ * them at all. These labels are the vocabulary that ecosystem uses for
+ * itself.
+ *
+ * Only the *leftmost* label is tested, and only against exact matches, which
+ * is what keeps `api.`, `cdn.`, `static.`, `img.`, `play.` and `accounts.`
+ * out. A match yields an `inferred` classification, never a `known` one.
+ */
+const INFERRED_TRACKING_LABELS: Record<string, { category: string; kind: string }> = {
+  ad: { category: "advertising", kind: "an ad-serving host label" },
+  ads: { category: "advertising", kind: "an ad-serving host label" },
+  adn: { category: "advertising", kind: "an ad-network host label" },
+  adx: { category: "advertising", kind: "an ad-exchange host label" },
+  adserver: { category: "advertising", kind: "an ad-server host label" },
+  adservice: { category: "advertising", kind: "an ad-service host label" },
+  adsystem: { category: "advertising", kind: "an ad-system host label" },
+  adserv: { category: "advertising", kind: "an ad-server host label" },
+  jadserve: { category: "advertising", kind: "an ad-server host label" },
+  dsp: { category: "advertising", kind: "a demand-side-platform host label" },
+  ssp: { category: "advertising", kind: "a supply-side-platform host label" },
+  rtb: { category: "advertising", kind: "a real-time-bidding host label" },
+  prebid: { category: "advertising", kind: "a header-bidding host label" },
+  pbs: { category: "advertising", kind: "a Prebid Server host label" },
+  hb: { category: "advertising", kind: "a header-bidding host label" },
+  hbx: { category: "advertising", kind: "a header-bidding host label" },
+  bid: { category: "advertising", kind: "a bidding host label" },
+  bidder: { category: "advertising", kind: "a bidding host label" },
+  sync: { category: "data-broker", kind: "a cookie-sync host label" },
+  csync: { category: "data-broker", kind: "a cookie-sync host label" },
+  cksync: { category: "data-broker", kind: "a cookie-sync host label" },
+  usersync: { category: "data-broker", kind: "a user-sync host label" },
+  idsync: { category: "data-broker", kind: "an identity-sync host label" },
+  cs: { category: "data-broker", kind: "a cookie-sync host label" },
+  cm: { category: "data-broker", kind: "a cookie-match host label" },
+  um: { category: "data-broker", kind: "a user-match host label" },
+  ums: { category: "data-broker", kind: "a user-match host label" },
+  ups: { category: "data-broker", kind: "a user-profile-sync host label" },
+  match: { category: "data-broker", kind: "an identity-match host label" },
+  pixel: { category: "advertising", kind: "a tracking-pixel host label" },
+  pixels: { category: "advertising", kind: "a tracking-pixel host label" },
+  pxl: { category: "advertising", kind: "a tracking-pixel host label" },
+  px: { category: "advertising", kind: "a tracking-pixel host label" },
+  tr: { category: "analytics", kind: "a tracking host label" },
+  trk: { category: "analytics", kind: "a tracking host label" },
+  track: { category: "analytics", kind: "a tracking host label" },
+  tracker: { category: "analytics", kind: "a tracking host label" },
+  tracking: { category: "analytics", kind: "a tracking host label" },
+  beacon: { category: "analytics", kind: "a beacon host label" },
+  telemetry: { category: "analytics", kind: "a telemetry host label" },
+  analytics: { category: "analytics", kind: "an analytics host label" },
+  stats: { category: "analytics", kind: "a statistics host label" },
+  metrics: { category: "analytics", kind: "a metrics host label" },
+  collector: { category: "analytics", kind: "a collector host label" },
+  dmp: { category: "data-broker", kind: "a data-management-platform host label" },
+  segments: { category: "data-broker", kind: "an audience-segment host label" },
+  audience: { category: "data-broker", kind: "an audience host label" },
+  retarget: { category: "advertising", kind: "a retargeting host label" },
+};
+
+/** Label suffixes that carry the same meaning: `gumgum-match`, `user-sync`. */
+const INFERRED_LABEL_SUFFIXES: Array<{ suffix: string; category: string; kind: string }> = [
+  { suffix: "-match", category: "data-broker", kind: "an identity-match host label" },
+  { suffix: "-sync", category: "data-broker", kind: "a cookie-sync host label" },
+  { suffix: "-cookie-sync", category: "data-broker", kind: "a cookie-sync host label" },
+  { suffix: "-pixel", category: "advertising", kind: "a tracking-pixel host label" },
+  { suffix: "-rtb", category: "advertising", kind: "a real-time-bidding host label" },
+  { suffix: "-adserver", category: "advertising", kind: "an ad-server host label" },
+  { suffix: "-tracking", category: "analytics", kind: "a tracking host label" },
+  { suffix: "-analytics", category: "analytics", kind: "an analytics host label" },
+];
+
+/**
+ * Request paths that only tracking endpoints serve. Used as a second opinion
+ * for hosts whose name says nothing.
+ */
+const INFERRED_TRACKING_PATHS: Array<{ pattern: RegExp; category: string; kind: string }> = [
+  { pattern: /\/(usersync|user_sync|cookiesync|cookie_sync|cksync|idsync|id_sync|getuid|setuid|pixelsync)\b/i, category: "data-broker", kind: "a cookie-sync request path" },
+  { pattern: /\/(rtb|openrtb2?|prebid|hbopenbid|bidrequest)\b/i, category: "advertising", kind: "a real-time-bidding request path" },
+  { pattern: /\/(pagead|adsid|adview|adcall|adserve|adrequest|impression)\b/i, category: "advertising", kind: "an ad-serving request path" },
+  { pattern: /\/(pixel|px|tr|track|trk|beacon|collect|telemetry)(\/|\.|\?|$)/i, category: "analytics", kind: "a tracking request path" },
+];
+
+function inferFromHost(host: string): { category: string; kind: string } | null {
+  const labels = host.split(".");
+  const leftmost = labels[0] ?? "";
+  const direct = INFERRED_TRACKING_LABELS[leftmost];
+  if (direct) return direct;
+  const suffixed = INFERRED_LABEL_SUFFIXES.find((entry) => leftmost.endsWith(entry.suffix));
+  if (suffixed) return { category: suffixed.category, kind: suffixed.kind };
+  return null;
+}
+
+/**
+ * Classifies a host the static map does not name, from tracking markers in
+ * the host and (when available) the request path. Returns `null` when
+ * nothing can be established, which stays `unknown-third-party`.
+ */
+export function inferTrackingCategory(host: string, requestUrl?: string): { category: string; kind: string } | null {
+  const fromHost = inferFromHost(normalizeHost(host));
+  if (fromHost) return fromHost;
+  if (!requestUrl) return null;
+  try {
+    const path = new URL(requestUrl).pathname;
+    const fromPath = INFERRED_TRACKING_PATHS.find((entry) => entry.pattern.test(path));
+    if (fromPath) return { category: fromPath.category, kind: fromPath.kind };
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Classifies a third-party host.
+ *
+ * `requestUrl` is optional and only used to infer a category for a host the
+ * static map does not name; passing it turns an unclassified RTB endpoint
+ * into an `inferred` classification a rule can reason about.
+ */
+export function classifyDomain(domain: string, requestUrl?: string): DomainClassification {
   const normalized = normalizeHost(domain);
   for (const entry of DOMAIN_CATEGORY_MAP) {
     if (entry.pattern.test(normalized)) {
-      return { domain: normalized, category: entry.category, service: entry.service };
+      return { domain: normalized, category: entry.category, service: entry.service, evidence: "known" };
     }
   }
-  return { domain: normalized, category: "unknown-third-party", service: normalized };
+  const inferred = inferTrackingCategory(normalized, requestUrl);
+  if (inferred) {
+    return {
+      domain: normalized,
+      category: inferred.category,
+      service: `${normalized} (unnamed service, classified from ${inferred.kind})`,
+      evidence: "inferred",
+      inferredFrom: inferred.kind,
+    };
+  }
+  return { domain: normalized, category: "unknown-third-party", service: normalized, evidence: "unknown" };
 }
 
 /** Lower-cases a hostname and strips a trailing root dot and any port. */

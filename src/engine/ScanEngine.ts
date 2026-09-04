@@ -1,6 +1,6 @@
 import type { UniVerscanConfig } from "../config/schema.js";
 import { BrowserManager } from "./BrowserManager.js";
-import { SiteDiscovery } from "./SiteDiscovery.js";
+import { SiteDiscovery, canonicalizeRouteUrl } from "./SiteDiscovery.js";
 import { EvidenceStore } from "./EvidenceStore.js";
 import { AccessibilityScanner } from "../modules/accessibility/AccessibilityScanner.js";
 import { CookieScanner } from "../modules/cookies/CookieScanner.js";
@@ -11,6 +11,7 @@ import { SecurityHeaderScanner } from "../modules/security/SecurityHeaderScanner
 import { AiInteractionDetector } from "../modules/ai/AiInteractionDetector.js";
 import { ConsumerJourneyScanner } from "../modules/consumer/ConsumerJourneyScanner.js";
 import { applyExceptions } from "./ExceptionFilter.js";
+import { assessPageIntegrity } from "./PageIntegrity.js";
 import { detectScope } from "./AutoScan.js";
 import { PackLoader } from "../packs/PackLoader.js";
 import { notEvaluatedFinding } from "../packs/helpers.js";
@@ -191,6 +192,9 @@ export class ScanEngine {
 
     const pages: PageContext[] = [];
     const unreachable: UnreachablePage[] = [];
+    /** Canonicalised URLs of the pages actually scanned, for duplicate detection. */
+    const scannedUrls = new Set<string>();
+    let duplicateRoutes = 0;
     let thirdPartyServices: ThirdPartyServiceRecord[] = [];
 
     this.progress.start("Scanning pages", routes.length);
@@ -231,6 +235,47 @@ export class ScanEngine {
       // not about the site. The wait is bounded and failure-tolerant: a page
       // that never goes idle (a poller, a live feed) is scanned as it stands.
       await page.waitForLoadState("networkidle", { timeout: settleTimeoutMs }).catch(() => undefined);
+
+      // A bot challenge, captcha wall or geo-block served with HTTP 200 is
+      // not the requested page, and every "this page is missing X" rule
+      // fires against it. It is recorded as unreachable for the same reason
+      // a 404 is: nothing about the real page has been established.
+      const integrity = await assessPageIntegrity(page).catch(() => ({ isContent: true as const }));
+      if (!integrity.isContent) {
+        const reason = integrity.reason ?? "the response was an interstitial, not the requested page";
+        unreachable.push({ url: route.url, reason, httpStatus });
+        this.progress.warn(`Skipping ${route.url}: ${reason}`);
+        logger.warn(`${route.url} answered HTTP ${httpStatus ?? "200"} with ${reason}. It is unscanned, not compliant.`);
+        continue;
+      }
+
+      // A route whose own `rel=canonical` points at a page already scanned is
+      // that page reached by another URL - a publisher's `?iref=` link, say.
+      // Scanning it again doubles every per-page finding, so the report reads
+      // "3 pages have no privacy notice" about one page seen three times.
+      //
+      // Deliberately narrow: only a canonical pointing at an *already
+      // scanned* URL counts. Sites that set one blanket canonical across
+      // genuinely different pages would otherwise collapse into a single
+      // scanned page, which would under-report rather than over-report.
+      const selfUrl = canonicalizeRouteUrl(new URL(page.url()));
+      const canonicalTarget = await page
+        .evaluate(() => document.querySelector("link[rel='canonical']")?.getAttribute("href") ?? null)
+        .then((href) => {
+          if (!href) return null;
+          try {
+            return canonicalizeRouteUrl(new URL(href, page.url()));
+          } catch {
+            return null;
+          }
+        })
+        .catch(() => null);
+      if (canonicalTarget !== null && canonicalTarget !== selfUrl && scannedUrls.has(canonicalTarget)) {
+        logger.debug(`Skipping ${route.url}: its canonical URL ${canonicalTarget} was already scanned`);
+        duplicateRoutes += 1;
+        continue;
+      }
+      scannedUrls.add(selfUrl);
 
       const securityHeaders = await securityScanner.collect(page, response).catch((error) => {
         logger.warn(`Security header collection failed for ${route.url}`, error);
@@ -289,6 +334,11 @@ export class ScanEngine {
         ? `${pages.length} page(s) scanned, ${unreachable.length} unreachable`
         : `${pages.length} page(s) scanned`
     );
+    if (duplicateRoutes > 0) {
+      logger.info(
+        `${duplicateRoutes} route(s) declared a canonical URL already scanned and were skipped as duplicates of it.`
+      );
+    }
     if (pages.length === 0 && routes.length > 0) {
       logger.warn(
         `None of the ${routes.length} discovered route(s) could be loaded. Every browser-dependent rule will report 'not-evaluated'; nothing about this target has been established.`

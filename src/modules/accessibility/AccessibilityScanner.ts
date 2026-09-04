@@ -156,95 +156,143 @@ export class AccessibilityScanner {
   /**
    * SC 2.4.7: the focused element must have a visible focus indicator.
    *
-   * Detected by comparing the element's computed style focused against the
-   * same element unfocused, rather than by looking for an outline. Modern
-   * design systems suppress the outline and indicate focus with a box
-   * shadow, a border, a background or an underline; checking only
-   * `outlineStyle` and `boxShadow` failed all of them, and reported a hard
-   * WCAG violation against pages that indicate focus perfectly well.
+   * Two things make this hard to get right, and the previous version got both
+   * wrong on real sites.
+   *
+   * *What counts as an indicator.* Looking for an outline or a box shadow
+   * failed every design system that indicates focus some other way. It is
+   * detected here by comparing the element's computed style focused against
+   * the same element unfocused - including geometry, because the most common
+   * pattern of all is a visually hidden skip link that moves into view on
+   * focus. On bbc.co.uk and nytimes.com that link changes `left`, `top`,
+   * `clip`, `width` and `height`, none of which were compared, so both sites
+   * were reported as failing 2.4.7.
+   *
+   * *How much to look at.* One Tab press is not a page. On heise.de the first
+   * Tab stop is an `<iframe>`, which has no focus style of its own and read
+   * as "no indicator anywhere on this page". Several keyboard-reachable
+   * elements are sampled, frames are skipped, and a failure is only reported
+   * when none of the sampled elements indicates focus at all.
    */
   private async checkFocusVisible(page: Page): Promise<InteractionCheckResult> {
-    let outcome: { determined: boolean; visible: boolean; changed: string[] } | null = null;
+    const samples: Array<{ label: string; changed: string[] }> = [];
+    const MAX_TAB_PRESSES = 12;
+    const WANTED_SAMPLES = 5;
+
     try {
-      await page.keyboard.press("Tab");
-      outcome = await page.evaluate(() => {
-        const active = document.activeElement as HTMLElement | null;
-        if (!active || active === document.body || active === document.documentElement) {
-          return { determined: false, visible: false, changed: [] as string[] };
-        }
+      for (let press = 0; press < MAX_TAB_PRESSES && samples.length < WANTED_SAMPLES; press += 1) {
+        await page.keyboard.press("Tab");
+        const sample = await page.evaluate(() => {
+          const active = document.activeElement as HTMLElement | null;
+          if (!active || active === document.body || active === document.documentElement) return null;
+          // Focus inside a frame is styled by that frame's own document,
+          // which this page cannot see. Sampling it would report the frame's
+          // lack of style as the page's failure.
+          const tag = active.tagName.toLowerCase();
+          if (tag === "iframe" || tag === "frame" || tag === "object" || tag === "embed") return null;
 
-        const PROPERTIES = [
-          "outlineStyle",
-          "outlineWidth",
-          "outlineColor",
-          "outlineOffset",
-          "boxShadow",
-          "borderColor",
-          "borderWidth",
-          "backgroundColor",
-          "backgroundImage",
-          "color",
-          "textDecorationLine",
-          "textDecorationColor",
-          "filter",
-        ] as const;
+          const PAINT = [
+            "outlineStyle",
+            "outlineWidth",
+            "outlineColor",
+            "outlineOffset",
+            "boxShadow",
+            "borderColor",
+            "borderWidth",
+            "borderStyle",
+            "backgroundColor",
+            "backgroundImage",
+            "color",
+            "textDecorationLine",
+            "textDecorationColor",
+            "textDecorationThickness",
+            "filter",
+            "opacity",
+            "visibility",
+          ] as const;
+          // Geometry: a visually hidden control that becomes visible on focus
+          // is indicating focus in the most emphatic way available.
+          const GEOMETRY = ["left", "top", "right", "bottom", "clip", "clipPath", "transform", "width", "height", "overflow", "zIndex", "position"] as const;
+          const PROPERTIES = [...PAINT, ...GEOMETRY];
 
-        const snapshot = (el: HTMLElement) => {
-          const style = window.getComputedStyle(el);
-          return Object.fromEntries(PROPERTIES.map((property) => [property, style[property]])) as Record<string, string>;
-        };
+          const snapshot = (el: HTMLElement) => {
+            const style = window.getComputedStyle(el);
+            return Object.fromEntries(PROPERTIES.map((property) => [property, style[property]])) as Record<string, string>;
+          };
 
-        const focused = snapshot(active);
-        active.blur();
-        const blurred = snapshot(active);
-        // Leave the page as it was found.
-        active.focus();
+          const focused = snapshot(active);
+          active.blur();
+          const blurred = snapshot(active);
+          active.focus();
 
-        // An outline that is never drawn cannot indicate anything. Chromium
-        // still reports a different `outline-offset` for a focused element
-        // whose outline is suppressed, which would otherwise read as a focus
-        // indicator on a page that has none.
-        const outlineDrawn = (snap: Record<string, string>) =>
-          snap.outlineStyle !== "none" && snap.outlineWidth !== "0px";
-        const outlineIsInert = !outlineDrawn(focused) && !outlineDrawn(blurred);
-        const OUTLINE_PROPERTIES = ["outlineStyle", "outlineWidth", "outlineColor", "outlineOffset"];
+          // An outline that is never drawn cannot indicate anything.
+          // Chromium reports a different `outline-offset` for a focused
+          // element whose outline is suppressed, which would otherwise read
+          // as a focus indicator on a page that has none.
+          const outlineDrawn = (snap: Record<string, string>) =>
+            snap.outlineStyle !== "none" && snap.outlineWidth !== "0px";
+          const outlineIsInert = !outlineDrawn(focused) && !outlineDrawn(blurred);
+          const OUTLINE_PROPERTIES = new Set(["outlineStyle", "outlineWidth", "outlineColor", "outlineOffset"]);
 
-        const changed = PROPERTIES.filter((property) => {
-          if (focused[property] === blurred[property]) return false;
-          if (outlineIsInert && OUTLINE_PROPERTIES.includes(property)) return false;
-          return true;
+          const changed = PROPERTIES.filter((property) => {
+            if (focused[property] === blurred[property]) return false;
+            if (outlineIsInert && OUTLINE_PROPERTIES.has(property)) return false;
+            return true;
+          });
+
+          const label = `${tag}${active.id ? `#${active.id}` : ""}: ${(active.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || "(no text)"}`;
+          return { label, changed: changed.slice() };
         });
-        return { determined: true, visible: changed.length > 0, changed: changed.slice() };
-      });
+        if (sample) samples.push(sample);
+      }
     } catch {
-      outcome = null;
-    }
-
-    if (outcome === null) {
       return {
         id: "focus-visible-indicator",
         passed: null,
-        description: "The first focusable element after Tab should have a visible focus indicator.",
+        description: "Keyboard-focusable elements must have a visible focus indicator (WCAG SC 2.4.7).",
         detail: "Could not be determined automatically in this environment.",
       };
     }
-    if (!outcome.determined) {
-      // Nothing took focus, so there is no indicator to look for. That is a
-      // different observation from "the indicator is missing".
+
+    if (samples.length === 0) {
       return {
         id: "focus-visible-indicator",
         passed: null,
-        description: "The first focusable element after Tab should have a visible focus indicator.",
-        detail: "Pressing Tab moved focus to no element, so no focus indicator could be observed on this page.",
+        description: "Keyboard-focusable elements must have a visible focus indicator (WCAG SC 2.4.7).",
+        detail: `Pressing Tab ${MAX_TAB_PRESSES} times reached no element this check can inspect (a frame, or nothing focusable), so no focus indicator could be observed.`,
       };
     }
+
+    const indicated = samples.filter((sample) => sample.changed.length > 0);
+    if (indicated.length === samples.length) {
+      return {
+        id: "focus-visible-indicator",
+        passed: true,
+        description: "Keyboard-focusable elements must have a visible focus indicator (WCAG SC 2.4.7).",
+        detail: `All ${samples.length} sampled focusable element(s) change appearance on focus, e.g. ${indicated[0].label} (${indicated[0].changed.slice(0, 4).join(", ")}).`,
+      };
+    }
+    if (indicated.length === 0) {
+      return {
+        id: "focus-visible-indicator",
+        passed: false,
+        description: "Keyboard-focusable elements must have a visible focus indicator (WCAG SC 2.4.7).",
+        detail: `None of the ${samples.length} sampled focusable element(s) render any differently focused than unfocused: ${samples
+          .map((sample) => sample.label)
+          .join("; ")}.`,
+      };
+    }
+    // Some indicate and some do not. Which of the two the page as a whole
+    // fails on depends on where the missing indicator is, so it is put to a
+    // person rather than decided here.
     return {
       id: "focus-visible-indicator",
-      passed: outcome.visible,
-      description: "The first focusable element after Tab should have a visible focus indicator.",
-      detail: outcome.visible
-        ? `Focus changes the element's ${outcome.changed.join(", ")}.`
-        : "The first focusable element renders identically focused and unfocused: no outline, shadow, border, background, colour or underline change was observed.",
+      passed: null,
+      description: "Keyboard-focusable elements must have a visible focus indicator (WCAG SC 2.4.7).",
+      detail: `${indicated.length} of ${samples.length} sampled focusable element(s) indicate focus; the rest do not: ${samples
+        .filter((sample) => sample.changed.length === 0)
+        .map((sample) => sample.label)
+        .join("; ")}. Check those controls by keyboard.`,
     };
   }
 }

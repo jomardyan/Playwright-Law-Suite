@@ -7,6 +7,22 @@ const PACK_ID = "eu-gdpr-eprivacy";
 const REGULATION = "GDPR / ePrivacy Directive";
 const JURISDICTION = "European Union";
 
+/**
+ * States which no-interaction visit saw a request, and how many were made.
+ *
+ * A site does not load the same trackers on every request, so "observed on
+ * visit 1 of 2" is a materially different claim from "observed on every
+ * visit". Saying which is what lets a reader reproduce the finding.
+ */
+function basisOf(flow: { beforeConsentVisits?: number } | null, requests: Array<{ visit?: number }>): string {
+  const visits = flow?.beforeConsentVisits;
+  if (!visits || visits < 2) return "";
+  const seen = Array.from(new Set(requests.map((r) => r.visit).filter((v): v is number => v !== undefined))).sort();
+  if (seen.length === 0) return ` The pre-consent state was measured over ${visits} independent no-interaction visits.`;
+  if (seen.length === visits) return ` Seen on all ${visits} independent no-interaction visits.`;
+  return ` Seen on ${seen.length} of ${visits} independent no-interaction visits (visit ${seen.join(", ")}); a site does not load the same trackers on every request.`;
+}
+
 const trackingBeforeConsent = defineRule({
   id: "gdpr-eprivacy-tracking-before-consent",
   requirement: "Non-essential cookies/trackers (analytics, advertising, session recording) must not load before the visitor gives consent.",
@@ -19,18 +35,42 @@ const trackingBeforeConsent = defineRule({
     const findings = [];
     for (const page of context.pages) {
       if (!page.consentFlow) continue;
-      const offenders = page.consentFlow.requestsBeforeAnyConsentAction.filter((req) =>
-        isNonEssentialTrackingCategory(classifyDomain(req.domain).category)
-      );
-      for (const offender of offenders) {
+      // A tracker the map names is a fact. A host classified only from a
+      // `sync.`/`rtb.`/`pixel.` marker is a strong signal about the RTB tail
+      // that no static list can enumerate - reported, but as a probable
+      // violation that names the inference, not as an established one.
+      //
+      // Grouped by host: the pre-consent state is measured over several
+      // independent visits, so one tracker seen on each of them would
+      // otherwise produce one finding per visit and per request. It is one
+      // fact about one recipient.
+      const byHost = new Map<
+        string,
+        { classification: ReturnType<typeof classifyDomain>; requests: typeof page.consentFlow.requestsBeforeAnyConsentAction }
+      >();
+      for (const req of page.consentFlow.requestsBeforeAnyConsentAction) {
+        const classification = classifyDomain(req.domain, req.url);
+        if (!isNonEssentialTrackingCategory(classification.category)) continue;
+        const entry = byHost.get(req.domain);
+        if (entry) entry.requests.push(req);
+        else byHost.set(req.domain, { classification, requests: [req] });
+      }
+
+      for (const [host, { classification, requests }] of byHost) {
+        const inferred = classification.evidence === "inferred";
         findings.push(
           buildFinding(trackingBeforeConsent, PACK_ID, REGULATION, JURISDICTION, {
-            status: "violation",
+            status: inferred ? "probable-violation" : "violation",
             affectedUrl: page.url,
-            affectedElement: offender.domain,
-            observedBehavior: `Request to ${offender.domain} (${classifyDomain(offender.domain).category}) observed before any consent action.`,
+            affectedElement: host,
+            observedBehavior: `${
+              inferred
+                ? `${requests.length} request(s) to ${host} observed before any consent action. The host is not a service this scanner names, but it carries ${classification.inferredFrom}, so it was classified ${classification.category} by pattern - confirm what it is.`
+                : `${requests.length} request(s) to ${host} (${classification.service}, ${classification.category}) observed before any consent action.`
+            }${basisOf(page.consentFlow, requests)}`,
             expectedBehavior: "No non-essential tracking requests before consent is given.",
-            evidence: [context.evidence.requestLog(`Pre-consent request to ${offender.domain}`, [offender])],
+            evidence: [context.evidence.requestLog(`Pre-consent requests to ${host}`, requests)],
+            manualReviewRequired: inferred,
           })
         );
       }

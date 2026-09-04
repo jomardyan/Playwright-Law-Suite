@@ -204,6 +204,7 @@ describe("eu-consumer-rights pack", () => {
     autoRenewalDisclosures: [],
     urgencyClaims: [],
     traderIdentityLinked: true,
+    traderIdentityLinks: ["Contact -> https://shop.example/contact"],
     surfaceEvidence: [],
     ...overrides,
   });

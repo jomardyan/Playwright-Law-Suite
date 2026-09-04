@@ -53,8 +53,13 @@ interface DocumentMatcher {
 const DOCUMENT_MATCHERS: DocumentMatcher[] = [
   {
     label: "privacy-policy",
-    text: /privacy\s*(policy|notice|statement|centre|center)?\b|data\s*protection\s*(policy|notice|statement)|datenschutz(erkl[äa]rung|hinweise|richtlinie)?|politique\s+de\s+confidentialit[ée]|confidentialit[ée]|pol[ií]tica\s+de\s+privacidad(e)?|privacidad(e)?|informativa\s+(sulla\s+)?privacy|privacybeleid|privacyverklaring|polityka\s+prywatno[śs]ci|prywatno[śs][ćc]|integritetspolicy|personuppgifter|persondatapolitik|personvern|tietosuoja|z[áa]sady\s+ochrany\s+osobn[íi]ch\s+[úu]daj[ůu]|adatv[ée]delm|politica\s+de\s+confiden[țt]ialitate|gizlilik|プライバシー|個人情報保護方針|隐私(政策|权政策)?|私隱|개인정보\s*(처리방침|취급방침)|สิทธิส่วนบุคคล|سياسة\s+الخصوصية/i,
-    href: /(^|[/\-_.])(privacy|privacidad|privacidade|privacybeleid|privacyverklaring|datenschutz|confidentialite|confidentialit|riservatezza|prywatnosc|integritetspolicy|personvern|tietosuoja|gizlilik|adatvedelem|osobnich-udaju)([/\-_.]|$)|privacy[-_]?(policy|notice|statement)|data[-_]?protection/i,
+    // "Données personnelles" is how the French data-protection authority
+    // itself labels its notice, and the equivalent phrase is the norm across
+    // southern Europe and the Netherlands. Requiring the word "privacy" or a
+    // literal translation of "confidentiality" reported cnil.fr as having no
+    // privacy notice at all.
+    text: /privacy\s*(policy|notice|statement|centre|center)?\b|data\s*protection\s*(policy|notice|statement)?\b|personal\s+(data|information)\b|your\s+data\b|datenschutz(erkl[äa]rung|hinweise|richtlinie|bestimmungen)?|ihre\s+daten|politique\s+de\s+confidentialit[ée]|confidentialit[ée]|donn[ée]es\s+personnelles|protection\s+des\s+donn[ée]es|pol[íi]tica\s+de\s+privacidad(e)?|privacidad(e)?|datos\s+personales|dados\s+pessoais|prote[çc][ãa]o\s+de\s+dados|informativa\s+(sulla\s+)?privacy|dati\s+personali|privacybeleid|privacyverklaring|persoonsgegevens|gegevensbescherming|polityka\s+prywatno[śs]ci|prywatno[śs][ćc]|dane\s+osobowe|integritetspolicy|personuppgifter|persondatapolitik|personoplysninger|personvern(erkl[æa]ring)?|tietosuoja(k[äa]yt[äa]nt[öo])?|z[áa]sady\s+ochrany\s+osobn[íi]ch\s+[úu]daj[ůu]|osobn[íi]ch\s+[úu]daj[ůu]|adatv[ée]delm|politica\s+de\s+confiden[țt]ialitate|date\s+personale|gizlilik|kişisel\s+verilerin|プライバシー|個人情報(の取扱|保護方針)?|隐私(政策|权政策)?|隱私(政策|權政策)?|保護政策|私隱|개인정보\s*(처리방침|취급방침|보호)?|นโยบายความเป็นส่วนตัว|สิทธิส่วนบุคคล|سياسة\s+الخصوصية/i,
+    href: /(^|[/\-_.])(privacy|privacidad|privacidade|privacybeleid|privacyverklaring|persoonsgegevens|gegevensbescherming|datenschutz|confidentialite|confidentialit|donnees-personnelles|donneespersonnelles|riservatezza|dati-personali|datos-personales|dados-pessoais|dane-osobowe|prywatnosc|personal-data|personuppgifter|integritetspolicy|personvern|personoplysninger|tietosuoja|gizlilik|adatvedelem|osobnich-udaju|date-personale)([/\-_.]|$)|privacy[-_]?(policy|notice|statement)|data[-_]?protection|protection[-_]?des[-_]?donnees/i,
     exclude: /\b(settings|preferences|choices|manage|centre\s+control|einstellungen|pr[ée]f[ée]rences|preferencias|impostazioni|instellingen|ustawienia)\b/i,
   },
   {

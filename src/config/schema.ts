@@ -28,6 +28,17 @@ export interface ConsentSimulationConfig {
    */
   settleMs?: number;
   /**
+   * How many independent no-interaction visits to make before concluding
+   * what a site loads pre-consent. Defaults to 2, clamped to 1-5.
+   *
+   * One visit is not a measurement. Two consecutive scans of stripe.com
+   * observed 36 third-party services before consent and then 3, so the same
+   * site produced 43 pre-consent findings and then none. Requests are unioned
+   * across the visits, which turns a coin-flip into a reproducible result;
+   * set it to 1 to trade that back for a faster scan.
+   */
+  beforeConsentVisits?: number;
+  /**
    * Whether to run an extra simulated visit that asserts Global Privacy
    * Control (`Sec-GPC: 1` + `navigator.globalPrivacyControl`). Defaults to
    * true. Turning it off makes every universal-opt-out rule report
@@ -168,6 +179,7 @@ export const DEFAULT_CONFIG: UniVerscanConfig = {
     enabled: true,
     testWithdrawal: true,
     probeGlobalPrivacyControl: true,
+    beforeConsentVisits: 2,
     acceptSelectors: [
       // CMP-specific handles first: they are unambiguous, and cheaper than a
       // text scan of the whole document.

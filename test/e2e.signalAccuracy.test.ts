@@ -53,6 +53,35 @@ const SIGNUP_HTML = `<!doctype html>
 </body>
 </html>`;
 
+/** A free newsletter signup. Not a paid subscription, so not a CRD surface. */
+const NEWSLETTER_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Newsletter</title></head>
+<body>
+  <main>
+    <h1>Newsletter</h1>
+    <p>Join our free mailing list for monthly project news.</p>
+    <input type="email" id="nl-email" autocomplete="email">
+    <button id="nl-go">Subscribe</button>
+  </main>
+  <a href="/contact">Contact</a>
+</body>
+</html>`;
+
+/** A paid plan page: subscription wording plus a price and a billing period. */
+const PRICING_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Pricing</title></head>
+<body>
+  <main>
+    <h1>Pricing plans</h1>
+    <p>Pro: €29 per month, billed monthly.</p>
+    <button id="buy">Subscribe now</button>
+  </main>
+  <a href="/legal">Legal</a>
+</body>
+</html>`;
+
 /** A content page that mentions plans and checkout in prose but sells nothing. */
 const ARTICLE_HTML = `<!doctype html>
 <html lang="en">
@@ -171,7 +200,11 @@ describe.skipIf(!hasLocalChromium)("signal collection accuracy", () => {
   beforeAll(async () => {
     server = createServer((req, res) => {
       const url = req.url ?? "/";
-      const body = url.startsWith("/a11y/custom-focus")
+      const body = url.startsWith("/newsletter")
+        ? NEWSLETTER_HTML
+        : url.startsWith("/pricing")
+        ? PRICING_HTML
+        : url.startsWith("/a11y/custom-focus")
         ? CUSTOM_FOCUS_HTML
         : url.startsWith("/a11y/no-focus")
         ? NO_FOCUS_HTML
@@ -268,6 +301,34 @@ describe.skipIf(!hasLocalChromium)("signal collection accuracy", () => {
       expect(report.isSubscriptionSurface).toBe(false);
       expect(report.isOrderCompletionSurface).toBe(false);
       expect(report.surfaceEvidence).toEqual([]);
+    });
+
+    it("does not treat a free newsletter signup as a paid subscription", async () => {
+      // python.org's /psf/newsletter/ was classified a paid subscription
+      // surface off the word "Subscribe" alone, which produced a Consumer
+      // Rights Directive withdrawal finding against the Python Software
+      // Foundation.
+      await page.goto(`${baseUrl}/newsletter`);
+      const report = await new ConsumerJourneyScanner().scan(page);
+      expect(report.isSubscriptionSurface).toBe(false);
+      expect(report.surfaceEvidence.join(" ")).toMatch(/without any price or billing period/);
+    });
+
+    it("recognises a paid plan page, where money is visible", async () => {
+      await page.goto(`${baseUrl}/pricing`);
+      const report = await new ConsumerJourneyScanner().scan(page);
+      expect(report.isSubscriptionSurface).toBe(true);
+      expect(report.surfaceEvidence.join(" ")).toMatch(/Price on the page/);
+    });
+
+    it("finds the trader identity behind a bare 'Contact' or 'Legal' link", async () => {
+      // Stripe ("Contact sales"), DigitalOcean ("About", "Legal"),
+      // python.org ("Legal Statements") and Rijksoverheid ("Contact") were
+      // all reported as publishing no trader identity anywhere.
+      await page.goto(`${baseUrl}/pricing`);
+      const report = await new ConsumerJourneyScanner().scan(page);
+      expect(report.traderIdentityLinked).toBe(true);
+      expect(report.traderIdentityLinks.join(" ")).toMatch(/Legal/);
     });
 
     it("recognises a real checkout, and says what made it think so", async () => {
