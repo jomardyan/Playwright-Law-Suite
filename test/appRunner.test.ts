@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -43,6 +43,23 @@ describe("serveStaticDirectory path containment", () => {
 
     expect(response.status).toBe(404);
     expect(body).not.toContain("do-not-serve");
+  });
+
+  it("rejects symlinks or junctions to files outside the source root", async () => {
+    dir = mkdtempSync(join(tmpdir(), "universcan-approot-"));
+    const siteRoot = join(dir, "site");
+    const outside = join(dir, "private");
+    mkdirSync(siteRoot); mkdirSync(outside);
+    writeFileSync(join(outside, "index.html"), "private index");
+    writeFileSync(join(outside, "secret.json"), "private data");
+    symlinkSync(outside, join(siteRoot, "linked"), process.platform === "win32" ? "junction" : "dir");
+    app = serveStaticDirectory(siteRoot, await getFreePort());
+    expect(new URL(app.url).hostname).toBe("127.0.0.1");
+    for (const path of ["linked/", "linked/secret.json"]) {
+      const response = await fetch(new URL(path, app.url));
+      expect(response.status).toBe(404);
+      expect(await response.text()).not.toContain("private");
+    }
   });
 
   it("serves index.html for the root when it is contained in repoPath", async () => {

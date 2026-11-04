@@ -1307,3 +1307,5 @@ MIT - see [LICENSE](./LICENSE).
 UniVerscan reports technical signals about a website. It is not legal advice
 and does not certify compliance with any regulation. Its output is evidence
 for a human review.
+
+[Maintenance audit and validation notes](docs/AUDIT-2026-11-04.md) documents the reviewed scope, development commands, checks and remaining limits.

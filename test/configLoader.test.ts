@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { loadConfig, loadConfigFromObject } from "../src/config/loader.js";
 
 describe("loadConfigFromObject", () => {
@@ -86,7 +86,7 @@ describe("customRulesPaths resolution", () => {
 
   it("resolves a relative path against an explicit baseDir for programmatic use", () => {
     const config = loadConfigFromObject({ customRulesPaths: ["./rules/local.js"] }, "/srv/app");
-    expect(config.customRulesPaths).toEqual([join("/srv/app", "rules", "local.js")]);
+    expect(config.customRulesPaths).toEqual([resolve("/srv/app", "rules", "local.js")]);
   });
 });
 

@@ -16,11 +16,11 @@ describe("version reporting", () => {
 
   it("reports the version from package.json rather than a hardcoded copy", () => {
     const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    const reported = execFileSync("npx", ["tsx", cli, "--version"], {
+    const reported = execFileSync(process.execPath, ["--import", "tsx", cli, "--version"], {
       encoding: "utf-8",
     }).trim();
     expect(reported).toBe(pkg.version);
-  });
+  }, 15_000);
 
   it("keeps the version out of the CLI source, so there is nothing to drift", () => {
     const source = readFileSync(

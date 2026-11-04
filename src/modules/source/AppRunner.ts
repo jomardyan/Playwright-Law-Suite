@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import type { SourceModeConfig } from "../../config/schema.js";
 import type { FrameworkDetectionResult } from "./FrameworkDetector.js";
@@ -40,15 +40,22 @@ export function serveStaticDirectory(repoPath: string, port: number): StartedApp
   const server = createServer(async (req, res) => {
     try {
       const requestedPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
-      const normalizedRoot = normalize(repoPath);
-      const resolved = normalize(join(repoPath, requestedPath));
+      const normalizedRoot = await realpath(repoPath);
+      const resolved = normalize(join(normalizedRoot, requestedPath));
       // Boundary-aware containment check: a plain startsWith on the string would
       // treat a sibling directory like "<root>-internal" as being inside "<root>".
       const isContained = resolved === normalizedRoot || resolved.startsWith(normalizedRoot + sep);
-      let filePath = isContained ? resolved : normalizedRoot;
+      if (!isContained) throw new Error("Path outside source directory");
+      let filePath = resolved;
       const info = await stat(filePath).catch(() => null);
       if (!info || info.isDirectory()) {
         filePath = join(filePath, "index.html");
+      }
+      // Resolve symlinks and junctions after selecting a directory index too.
+      // Lexical containment alone allows a link in the repo to expose outside files.
+      filePath = await realpath(filePath);
+      if (filePath !== normalizedRoot && !filePath.startsWith(normalizedRoot + sep)) {
+        throw new Error("Linked path outside source directory");
       }
       const content = await readFile(filePath);
       res.writeHead(200, { "Content-Type": MIME_TYPES[extname(filePath)] ?? "application/octet-stream" });
@@ -58,9 +65,10 @@ export function serveStaticDirectory(repoPath: string, port: number): StartedApp
       res.end("Not found");
     }
   });
-  server.listen(port);
+  // This temporary source server is for the local browser scanner only.
+  server.listen(port, "127.0.0.1");
   return {
-    url: `http://localhost:${port}/`,
+    url: `http://127.0.0.1:${port}/`,
     stop: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

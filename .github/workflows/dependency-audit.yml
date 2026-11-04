@@ -1,0 +1,34 @@
+name: Dependency advisory review
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'
+permissions:
+  contents: read
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        directory: ["."]
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      # Report all developer-tool advisories; gate shipped runtime dependencies.
+      - name: Report complete dependency advisory inventory
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      - name: Reject vulnerable production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
