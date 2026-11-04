@@ -1311,3 +1311,8 @@ for a human review.
 [Maintenance audit and validation notes](docs/AUDIT-2026-11-04.md) documents the reviewed scope, development commands, checks and remaining limits.
 
 `make dev ARGS="--help"` runs the TypeScript CLI from source. `make lint` runs the existing source and test type checker. `make package` compiles `dist/` and creates a local npm `.tgz` archive; it does not publish it.
+
+## Copyright
+
+Copyright (c) 2026 Hayk Jomardyan - Lolisoft.
+See COPYRIGHT.md for attribution and existing license notices.
