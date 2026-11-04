@@ -28,7 +28,12 @@ jobs:
       - run: npm ci --ignore-scripts
       # Report all developer-tool advisories; gate shipped runtime dependencies.
       - name: Report complete dependency advisory inventory
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
+        run: node "$GITHUB_WORKSPACE/.github/scripts/dependency-advisories.cjs"
+      - name: Retain complete advisory inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-advisories-${{ strategy.job-index }}
+          path: ${{ matrix.directory }}/dependency-advisories.json
+          if-no-files-found: error
       - name: Reject vulnerable production dependencies
         run: npm audit --omit=dev --audit-level=moderate
