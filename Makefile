@@ -70,3 +70,4 @@ cli: build
 
 clean:
 	rm -rf dist universcan-report
+	rm -f universcan-*.tgz
