@@ -9,11 +9,14 @@ OUT ?= ./universcan-report
 AUTOSCAN_CONFIG ?=
 ARGS ?=
 
-.PHONY: help install build typecheck test check browsers doctor scan autoscan cli clean
+.PHONY: help install dev build lint typecheck test check package browsers doctor scan autoscan cli clean
 
 help:
 	@printf '%s\n' \
 		'make install    Install npm dependencies' \
+		'make dev ARGS=... Run the TypeScript CLI from source' \
+		'make lint       Check source and test types' \
+		'make package    Compile and create a local npm archive' \
 		'make build      Compile TypeScript to dist/' \
 		'make typecheck  Run TypeScript type checking' \
 		'make test       Run the test suite' \
@@ -27,6 +30,14 @@ help:
 
 install:
 	$(NPM) install
+
+dev:
+	$(NPM) run dev -- $(ARGS)
+
+lint: typecheck
+
+package: build
+	$(NPM) pack --ignore-scripts
 
 build:
 	$(NPM) run build

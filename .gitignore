@@ -4,3 +4,5 @@ universcan-report/
 universcan-report-test/
 *.log
 .DS_Store
+
+*.tgz
