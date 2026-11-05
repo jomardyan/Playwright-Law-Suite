@@ -33,6 +33,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
 
+      - name: Verify GNU Make command discovery and recipe graph
+        run: |
+          make help
+          make -n build package clean
       - name: Install dependencies
         run: npm ci
 
@@ -53,7 +57,7 @@ jobs:
         run: npm run typecheck
 
       - name: Build
-        run: npm run build
+        run: make build
 
       # UNIVERSCAN_REQUIRE_CHROMIUM turns a missing browser into a failed
       # suite rather than a quietly reduced one.
